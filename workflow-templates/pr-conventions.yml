@@ -1,7 +1,7 @@
 name: PR conventions
 
 # Valida Conventional Commits (título + commits) via reusable workflow da org.
-# Começa em modo regressivo (warn). Troque para block quando o time estiver aderente.
+# Começa em modo warn (apenas avisa). Troque para block quando o time estiver aderente.
 
 on:
   pull_request:

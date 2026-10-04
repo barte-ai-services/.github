@@ -1,8 +1,7 @@
 name: conventional-pr
 
 # Reusable: valida Conventional Commits num PR — título + commits.
-# Rollout REGRESSIVO: default mode=warn (só avisa, não quebra PR existente).
-# Vire mode=block quando o time estiver aderente.
+# Começa em modo warn (apenas avisa, não bloqueia). Vire mode=block quando o time estiver aderente.
 #
 # Ativação no repo chamador (.github/workflows/pr-conventions.yml):
 #   on:
@@ -21,7 +20,7 @@ on:
   workflow_call:
     inputs:
       mode:
-        description: "block (falha o check) ou warn (apenas avisa — rollout regressivo)"
+        description: "block (falha o check) ou warn (apenas avisa, não bloqueia)"
         type: string
         default: warn
       require_scope:
@@ -63,7 +62,7 @@ jobs:
           subjectPatternError: |
             O assunto "{subject}" deve começar em minúscula e não terminar com ponto.
           validateSingleCommit: false
-      - name: Aviso (modo regressivo)
+      - name: Aviso (modo warn)
         if: ${{ inputs.mode == 'warn' && steps.lint.outcome == 'failure' }}
         run: echo "::warning title=conventional-pr::Título fora do Conventional Commits (modo warn — não bloqueia). Padrão: tipo(escopo opcional): assunto."
 
