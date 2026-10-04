@@ -1,0 +1,44 @@
+name: license-sync
+
+# Reusable: garante que o repo chamador tenha o LICENSE canônico da org.
+# LICENSE NÃO é herdado automaticamente pelo .github — por isso este sync.
+# NOTE: ler o LICENSE do repo .github (privado) exige um token com acesso à org.
+# O caller passa esse token como secret `ORG_TOKEN` (PAT ou GitHub App). Sem ele,
+# o passo é pulado com aviso. (O NOTICE é per-repo e NÃO é sincronizado aqui.)
+
+on:
+  workflow_call:
+    secrets:
+      ORG_TOKEN:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar LICENSE canônico
+        env:
+          TOKEN: ${{ secrets.ORG_TOKEN || github.token }}
+        run: |
+          if ! curl -sSf -H "Authorization: token $TOKEN" \
+               -H "Accept: application/vnd.github.raw" \
+               https://api.github.com/repos/barte-ai-services/.github/contents/LICENSE \
+               -o LICENSE.canonical; then
+            echo "::warning::não consegui ler o LICENSE canônico (token sem acesso ao repo .github). Pulando."
+            exit 0
+          fi
+          if ! cmp -s LICENSE LICENSE.canonical 2>/dev/null; then
+            cp LICENSE.canonical LICENSE
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add LICENSE
+            git commit -m "chore: sincroniza LICENSE canônico da org" && git push || echo "sem mudanças a commitar"
+          else
+            echo "LICENSE já está canônico."
+          fi
+          rm -f LICENSE.canonical

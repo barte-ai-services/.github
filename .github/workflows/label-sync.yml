@@ -1,0 +1,29 @@
+name: label-sync
+
+# Reusable: aplica o set canônico (.github/labels.yml deste repo da org) no repo que chamar.
+# skip-delete: não remove labels fora do yaml (preserva layer:/componente:/cliente:/etc.).
+# Ativação em cada repo: um workflow de 1 passo com
+#   uses: barte-ai-services/.github/.github/workflows/label-sync.yml@main
+# Ou rode manual aqui (workflow_dispatch) para sincronizar o próprio .github.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout org canonical labels
+        uses: actions/checkout@v4
+        with:
+          repository: barte-ai-services/.github
+          path: _org
+      - uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          yaml-file: _org/.github/labels.yml
+          skip-delete: true
+          dry-run: false

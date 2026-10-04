@@ -1,0 +1,25 @@
+Copyright (c) 2026 Barte Soluções de Pagamento LTDA (CNPJ 51.746.143/0001-88). Todos os direitos reservados.
+
+PROPRIETÁRIO E CONFIDENCIAL
+
+Este software e a sua documentação são propriedade da Barte Soluções de
+Pagamento LTDA ("Barte"). Fora do que um cliente recebe, descrito abaixo, eles
+são de uso interno dos funcionários e contratados da Barte.
+
+O que a Barte entrega a um cliente num contrato comercial pode ser usado por
+esse cliente nos termos do contrato celebrado entre as duas partes, e somente
+neles, na instalação que o contrato cobre. A entrega inclui documentos, a imagem
+de contêiner, os packs de configuração e o código de implantação copiado para o
+repositório do cliente, como o módulo Terraform, que leva este LICENSE e um
+NOTICE.md com a versão de que foi copiado. Onde este aviso e o contrato
+divergirem, o contrato prevalece.
+
+Ninguém mais pode copiar, modificar, distribuir, sublicenciar, publicar ou
+divulgar este software, no todo ou em parte, sem autorização prévia e por
+escrito da Barte. Esta licença não concede nenhum direito sobre o software ou o
+seu código-fonte além do que o contrato concede.
+
+Os componentes de terceiros mantêm as próprias licenças; veja o NOTICE.
+
+O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA", SEM GARANTIA DE QUALQUER
+ESPÉCIE, EXPRESSA OU IMPLÍCITA, exceto no que o contrato dispuser.
