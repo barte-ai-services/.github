@@ -1,0 +1,6 @@
+{
+  "name": "PR conventions (Conventional Commits)",
+  "description": "Valida título e commits do PR no padrão Conventional Commits (reusable da org). Começa em modo warn.",
+  "iconName": "git-pull-request",
+  "categories": ["Code quality"]
+}

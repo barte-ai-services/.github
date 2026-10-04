@@ -1,0 +1,16 @@
+name: PR conventions
+
+# Dogfood: o próprio repo .github valida seus PRs no padrão Conventional Commits.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  conventions:
+    uses: barte-ai-services/.github/.github/workflows/conventional-pr.yml@main
+    with:
+      mode: warn

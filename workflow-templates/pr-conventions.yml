@@ -1,0 +1,18 @@
+name: PR conventions
+
+# Valida Conventional Commits (título + commits) via reusable workflow da org.
+# Começa em modo regressivo (warn). Troque para block quando o time estiver aderente.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  conventions:
+    uses: barte-ai-services/.github/.github/workflows/conventional-pr.yml@main
+    with:
+      mode: warn
