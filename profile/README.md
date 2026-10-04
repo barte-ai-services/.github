@@ -20,7 +20,7 @@ agentes — que se combinam em cada instalação. O produto de IA é entregue so
 - **[chronicle](https://github.com/barte-ai-services/chronicle)** — plataforma de dados de um perímetro: coleta pelo gatekeeper, histórico versionado, ontologia e projeções.
 
 ### Identidade
-- **[tessera](https://github.com/barte-ai-services/tessera)** — serviço de identidade da plataforma, construído sobre Better Auth.
+- **[tessera](https://github.com/barte-ai-services/tessera)** — serviço de identidade da plataforma, construído sobre Keycloak.
 
 ### Experiência
 - **[shell](https://github.com/barte-ai-services/shell)** — front-ends em Next.js (Multi-Zones), com auth, layout e navegação compartilhados.
