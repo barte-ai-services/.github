@@ -1,18 +1,12 @@
 <div align="center">
 
-<img src="https://cdn.prod.website-files.com/682ffb2a47584fbeb9a49ddf/6aabf663b3f6ba9a4d86a9f6_og-barte-home.png" alt="Barte" width="640">
-
-# Barte AI Services
-
-**Pagamentos e Agentes de IA para times financeiros.**
-
-A frente de IA da [Barte](https://barte.com) — a fintech brasileira que embute
-especialistas financeiros dentro das empresas para automatizar processos,
-integrar plataformas e gerar inteligência operacional.
+<img src="profile/assets/hero.png" alt="Barte AI Services — automação agêntica para times financeiros" width="820">
 
 </div>
 
----
+A frente de IA da **[Barte](https://barte.com)** — a fintech brasileira que embute
+especialistas financeiros dentro das empresas para automatizar processos,
+integrar plataformas e gerar inteligência operacional.
 
 ## Automação agêntica
 
@@ -37,7 +31,11 @@ regra nova — a operação fica mais inteligente a cada ciclo.
 
 ## Quem confia
 
-Buser · Sallve · Comp · Housi · Privalia · XP Investimentos · Grupo Primo · Lojas Torra
+<div align="center">
+
+<img src="profile/assets/clientes.png" alt="Buser, Sallve, Grupo Primo, Housi, Privalia, XP Investimentos" width="900">
+
+</div>
 
 ---
 
