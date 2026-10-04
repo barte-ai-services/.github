@@ -1,40 +1,50 @@
+<div align="center">
+
+<img src="https://cdn.prod.website-files.com/682ffb2a47584fbeb9a49ddf/6aabf663b3f6ba9a4d86a9f6_og-barte-home.png" alt="Barte" width="640">
+
 # Barte AI Services
 
-A Barte é uma plataforma de pagamentos brasileira (Barte Soluções de Pagamento LTDA).
-A **Barte AI Services** é a frente de inteligência artificial da empresa: uma plataforma
-de IA agêntica que fica por cima das operações, extensível e orientada a contratos,
-instalada e hiperpersonalizada por cliente.
+**Pagamentos e Agentes de IA para times financeiros.**
 
-Em vez de uma ferramenta única, a plataforma é um conjunto de módulos — borda de dados,
-dados versionados, identidade, execução durável, front-ends compartilhados e um acervo de
-agentes — que se combinam em cada instalação. O produto de IA é entregue sob a marca
-[Guardia](https://tryguardia.ai).
+A frente de IA da [Barte](https://barte.com) — a fintech brasileira que embute
+especialistas financeiros dentro das empresas para automatizar processos,
+integrar plataformas e gerar inteligência operacional.
 
-## Mapa da plataforma
-
-### Núcleo
-- **[gatekeeper](https://github.com/barte-ai-services/gatekeeper)** — borda de dados do perímetro: proxy e controle de acesso (Envoy + gRPC/Protobuf), provisionado com Terraform.
-- **[loom](https://github.com/barte-ai-services/loom)** — execução durável: workflows longos, agentes e aprovação humana, sobre Temporal.
-
-### Dados
-- **[chronicle](https://github.com/barte-ai-services/chronicle)** — plataforma de dados de um perímetro: coleta pelo gatekeeper, histórico versionado, ontologia e projeções.
-
-### Identidade
-- **[tessera](https://github.com/barte-ai-services/tessera)** — serviço de identidade da plataforma, construído sobre Keycloak.
-
-### Experiência
-- **[shell](https://github.com/barte-ai-services/shell)** — front-ends em Next.js (Multi-Zones), com auth, layout e navegação compartilhados.
-- **[barte-ui-kit](https://github.com/barte-ai-services/barte-ui-kit)** — UI kit React sobre o barte-design-system: gráficos, dashboard e componentes de produto.
-
-### Agentes
-- **[guild](https://github.com/barte-ai-services/guild)** — o acervo de agentes e skills, o mesmo para todo cliente, implantado por instalação.
-
-### Ferramentas e documentação
-- **[barte-forge](https://github.com/barte-ai-services/barte-forge)** — harness de desenvolvimento da plataforma (fork do Ahrena Framework).
-- **[barte-fde-plugins](https://github.com/barte-ai-services/barte-fde-plugins)** — plugins do Claude Code usados pelo time de FDE.
-- **[barte-ai-platform](https://github.com/barte-ai-services/barte-ai-platform)** — documentação da Barte AI Platform.
+</div>
 
 ---
 
-Padrões da organização (labels, templates de issues/PRs, workflows reutilizáveis) vivem no
-repositório [`.github`](https://github.com/barte-ai-services/.github).
+## Automação agêntica
+
+O sistema de orquestração de agentes financeiros **que se aprimora sozinho**.
+O agente opera; a pessoa decide e assina. Cada exceção e cada decisão viram
+regra nova — a operação fica mais inteligente a cada ciclo.
+
+| Etapa | O que acontece |
+|-------|----------------|
+| **Dados da empresa** | ERP, sistemas satélite e planilhas de trabalho consolidados num feed único. |
+| **Contexto financeiro** | Lançamentos, decisões e aprovações viram regras explícitas — o modelo operacional da empresa. |
+| **Agentes** | Conciliações, lançamentos e cobranças rodam sozinhos; a exceção sobe para quem decide. |
+| **Relatório** | Relatórios prontos, com cada valor rastreável até a origem. |
+| **Melhoria contínua** | Cada ciclo vira aprendizado — menos exceção, mais operação no automático. |
+
+## Como construímos
+
+- **Arquitetura aberta** — integra com o que a empresa já usa, sem arrancar o que funciona.
+- **Humano no circuito** — o agente executa a rotina; a decisão e a assinatura são da pessoa.
+- **Rastreável de ponta a ponta** — todo valor com origem auditável.
+- **Personalizável por cliente** — cada instalação começa na plataforma e evolui conforme a operação.
+
+## Quem confia
+
+Buser · Sallve · Comp · Housi · Privalia · XP Investimentos · Grupo Primo · Lojas Torra
+
+---
+
+<div align="center">
+
+**[Conheça a Barte →](https://barte.com)**
+
+<sub>Barte Soluções de Pagamento LTDA</sub>
+
+</div>
