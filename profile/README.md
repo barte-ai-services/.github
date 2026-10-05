@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="profile/assets/hero.png" alt="Barte AI Services — automação agêntica para times financeiros" width="820">
+<img src="https://raw.githubusercontent.com/barte-ai-services/.github/main/profile/assets/hero.png" alt="Barte AI Services — automação agêntica para times financeiros" width="820">
 
 </div>
 
@@ -33,7 +33,7 @@ regra nova — a operação fica mais inteligente a cada ciclo.
 
 <div align="center">
 
-<img src="profile/assets/clientes.png" alt="Buser, Sallve, Grupo Primo, Housi, Privalia, XP Investimentos" width="900">
+<img src="https://raw.githubusercontent.com/barte-ai-services/.github/main/profile/assets/clientes.png" alt="Buser, Sallve, Grupo Primo, Housi, Privalia, XP Investimentos" width="900">
 
 </div>
 
