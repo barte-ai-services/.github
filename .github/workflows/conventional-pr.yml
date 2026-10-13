@@ -64,7 +64,8 @@ jobs:
           validateSingleCommit: false
       - name: Aviso (modo warn)
         if: ${{ inputs.mode == 'warn' && steps.lint.outcome == 'failure' }}
-        run: echo "::warning title=conventional-pr::Título fora do Conventional Commits (modo warn — não bloqueia). Padrão: tipo(escopo opcional): assunto."
+        run: |
+          echo "::warning title=conventional-pr::Título fora do Conventional Commits (modo warn — não bloqueia). Padrão: tipo(escopo opcional): assunto."
 
   commits:
     name: commits (commitlint)
