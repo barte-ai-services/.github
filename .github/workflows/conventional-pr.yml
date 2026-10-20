@@ -77,20 +77,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # O commitlint é instalado fora do checkout: na raiz de um monorepo pnpm, o `npm install` lê o
+      # package.json do repo e recusa o protocolo `workspace:*` (EUNSUPPORTEDPROTOCOL), e o job caía
+      # antes de olhar um commit. A config do repo, quando existe, é copiada para junto da instalação,
+      # para que o `extends` resolva o config-conventional instalado ali.
+      - name: Instala commitlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/commitlint"
+          npm install --no-save --no-package-lock --prefix "$RUNNER_TEMP/commitlint" \
+            @commitlint/cli @commitlint/config-conventional
       - name: Garante config do commitlint
         run: |
-          if ls commitlint.config.* .commitlintrc* >/dev/null 2>&1; then
-            echo "Config do commitlint encontrada no repo."
+          shopt -s nullglob
+          configs=(commitlint.config.* .commitlintrc*)
+          if [ ${#configs[@]} -gt 0 ]; then
+            echo "Config do commitlint encontrada no repo: ${configs[0]}."
+            cp "${configs[0]}" "$RUNNER_TEMP/commitlint/"
+            echo "COMMITLINT_CONFIG=$RUNNER_TEMP/commitlint/$(basename "${configs[0]}")" >> "$GITHUB_ENV"
           else
             echo "Sem config no repo — usando default config-conventional."
-            printf "module.exports = { extends: ['@commitlint/config-conventional'] };\n" > commitlint.config.js
+            printf "module.exports = { extends: ['@commitlint/config-conventional'] };\n" > "$RUNNER_TEMP/commitlint/commitlint.config.js"
+            echo "COMMITLINT_CONFIG=$RUNNER_TEMP/commitlint/commitlint.config.js" >> "$GITHUB_ENV"
           fi
-      - name: Instala commitlint
-        run: npm install --no-save @commitlint/cli @commitlint/config-conventional
       - name: Lint dos commits do PR
         continue-on-error: ${{ inputs.mode == 'warn' }}
         run: |
-          npx commitlint \
+          "$RUNNER_TEMP/commitlint/node_modules/.bin/commitlint" \
+            --config "$COMMITLINT_CONFIG" \
             --from "${{ github.event.pull_request.base.sha }}" \
             --to "${{ github.event.pull_request.head.sha }}" \
             --verbose
