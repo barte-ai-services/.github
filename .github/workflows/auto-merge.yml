@@ -1,0 +1,71 @@
+name: auto-merge
+
+# Liga o auto-merge em todo PR aberto da org, para que um PR com o CI verde entre na main sem ninguém
+# clicar (barte-ai-services/infra#183). Quem decide o que segura o merge é o ruleset de cada repo, que
+# exige só os checks de CI; este workflow só garante que o auto-merge esteja ligado.
+#
+# - Passa por todo repositório não arquivado com allow_auto_merge ligado. O infra e o template
+#   (barte-ai-platform) têm a setting desligada de propósito, pela tabela .github/platform-repos.json
+#   do infra: neles o merge é um clique do Fernando, e este workflow não toca.
+# - Pula PR em draft e PR que já tem auto-merge.
+# - Um PR atrás da main (BEHIND), num repo que exige a branch atualizada, tem a branch atualizada,
+#   para o CI rodar de novo e o auto-merge seguir.
+# - PR empilhado (stack) não aceita auto-merge no GitHub: é relatado e seguido adiante.
+#
+# Roda com o token do app de release (herald-barte), instalado em todos os repos, para o merge disparar
+# os workflows de push da main, o que um merge feito pelo GITHUB_TOKEN não faz.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: token do app de release
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: liga o auto-merge nos PRs abertos
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -uo pipefail
+          enabled=0 updated=0 skipped=0
+          repos="$(gh repo list "$OWNER" --limit 500 --no-archived --json name --jq '.[].name')"
+          for repo in $repos; do
+            settings="$(gh api "repos/$OWNER/$repo")" || continue
+            [ "$(jq -r '.allow_auto_merge' <<<"$settings")" = "true" ] || continue
+            method="$(jq -r 'if .allow_merge_commit then "--merge" elif .allow_squash_merge then "--squash" else "--rebase" end' <<<"$settings")"
+            prs="$(gh pr list -R "$OWNER/$repo" --state open --limit 200 \
+              --json number,isDraft,autoMergeRequest,mergeStateStatus \
+              --jq '.[] | select(.isDraft | not) | "\(.number)\t\(.autoMergeRequest != null)\t\(.mergeStateStatus)"')" || continue
+            while IFS=$'\t' read -r n auto state; do
+              [ -n "$n" ] || continue
+              if [ "$state" = "BEHIND" ] && gh pr update-branch "$n" -R "$OWNER/$repo" >/dev/null 2>&1; then
+                updated=$((updated + 1))
+              fi
+              [ "$auto" = "true" ] && continue
+              if out="$(gh pr merge "$n" -R "$OWNER/$repo" --auto "$method" 2>&1)"; then
+                enabled=$((enabled + 1)); echo "$repo#$n: auto-merge ligado"
+              else
+                skipped=$((skipped + 1)); echo "$repo#$n: não ligou — $(head -1 <<<"$out")"
+              fi
+            done <<<"$prs"
+          done
+          echo "auto-merge ligado em $enabled PR(s); $updated branch(es) atualizada(s); $skipped não aceitaram." | tee -a "$GITHUB_STEP_SUMMARY"
