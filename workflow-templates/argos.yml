@@ -1,0 +1,19 @@
+name: argos
+
+# O Argos, revisor da Ahrena, lê cada PR e publica o parecer, pelo reusable da org.
+# Começa em modo comment (só comenta). Troque para block quando o time confiar nos achados.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  argos:
+    uses: barte-ai-services/.github/.github/workflows/argos.yml@main
+    secrets: inherit
+    with:
+      mode: comment

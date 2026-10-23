@@ -1,0 +1,152 @@
+name: argos
+
+# Reusable: o Argos, o revisor da Ahrena (ahrenatechnology/ahrena-agents), lê o PR contra as regras do
+# ahrena-framework e publica o parecer no PR. É a primeira coisa que olha um PR na Barte: roda em paralelo
+# ao CI e não soma tempo a ele.
+#
+# O Argos só lê: as ferramentas dele são Read, Grep e Glob, ele não sobe a aplicação, não builda e não roda
+# teste. Ele nunca aprova e nunca faz merge. A regra da Barte (ciclo de dev) é que o merge espera o CI verde,
+# o check do Argos verde e a aprovação de um maintainer que não é o autor. Por isso o Decisor (Clef), que
+# faria o auto-merge, fica desligado: sem as credenciais do Cloudflare ele segura para humano.
+#
+# Dois modos:
+#   comment  o parecer vai como comentário e o check fica verde. É o modo de calibrar (o default).
+#   block    um achado blocking deixa o check vermelho, e o ruleset que exige o check segura o merge.
+#
+# Identidade: o parecer sai como o app «Argos, by Ahrena» (argos-by-ahrena) quando a org tem a variable
+# ARGOS_APP_ID e o secret ARGOS_APP_PRIVATE_KEY, e o app está instalado no repo. Sem eles, sai como
+# github-actions[bot], e a review roda do mesmo jeito.
+#
+# Ativação no repo chamador (.github/workflows/argos.yml), também em workflow-templates/argos.yml:
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, ready_for_review]
+#   permissions:
+#     contents: read
+#     pull-requests: write
+#   jobs:
+#     argos:
+#       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
+#       secrets: inherit
+#
+# O token do Claude é o secret de org BARTE_ARGOS_CLAUDE_TOKEN (claude setup-token), visível aos repos
+# privados. Enquanto ele não existe, vale o BARTE_HAROLD_CLAUDE_TOKEN.
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "comment (só comenta, check verde) ou block (achado blocking deixa o check vermelho)"
+        type: string
+        default: comment
+      model:
+        description: "Modelo do Argos. Vazio: o default da plataforma, no ahrena-agents."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: argos
+    # Rascunho ainda não está pronto para ler, o Dependabot já tem o próprio check, e um PR de fork não recebe
+    # os secrets (e o Argos nunca lê o checkout de um fork com credencial).
+    if: >-
+      github.event_name == 'pull_request'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: argos-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      # ahrenatechnology/ahrena-agents v1.2.1, pelo digest: uma tag no registry pode ser movida.
+      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:f8c7d2ffa77bf0a237da59dc57526292b622e6ac12b589a40c6cad646c41a95c
+      PR: ${{ github.event.pull_request.number }}
+      BASE: ${{ github.event.pull_request.base.sha }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: o token do Argos (app argos-by-ahrena), quando a org o tem
+        id: app
+        if: vars.ARGOS_APP_ID != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ARGOS_APP_ID }}
+          private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
+
+      - name: o Argos lê o PR
+        id: argos
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
+          ARGOS_MODEL: ${{ inputs.model }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::error::sem token do Claude: o secret de org BARTE_ARGOS_CLAUDE_TOKEN não alcança este repo"
+            exit 1
+          fi
+          # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
+          # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
+          set +e
+          docker run --rm \
+            -e CLAUDE_CODE_OAUTH_TOKEN -e ARGOS_MODEL -e GH_TOKEN \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            -v "$PWD:/repo" -w /repo \
+            "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \
+            > "$RUNNER_TEMP/review.json" 2> "$RUNNER_TEMP/review.log"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/review.log" >&2
+          if [ "$status" -ne 0 ] || ! jq -e . "$RUNNER_TEMP/review.json" >/dev/null 2>&1; then
+            echo "::error::o Argos não terminou a review (saída $status); o log está acima"
+            exit 1
+          fi
+          verdict=$(jq -r '.verdict // "comment"' "$RUNNER_TEMP/review.json")
+          blocking=$(jq '[.findings[]? | select(.severity == "blocking")] | length' "$RUNNER_TEMP/review.json")
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
+
+      # Um comentário só por PR, editado a cada push: o marcador <!-- ahrena-review --> do runtime o acha.
+      - name: o parecer, no PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          body="$RUNNER_TEMP/comment.md"
+          jq -r '.comment // empty' "$RUNNER_TEMP/review.json" > "$body"
+          if [ ! -s "$body" ]; then
+            { echo "<!-- ahrena-review -->"; echo "**Argos** · verdict \`${{ steps.argos.outputs.verdict }}\`"; echo
+              jq -r '.summary // "(sem parecer)"' "$RUNNER_TEMP/review.json"; } > "$body"
+          fi
+          printf '\n<sub>commit %s · modo %s</sub>\n' "$HEAD" "${{ inputs.mode }}" >> "$body"
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- ahrena-review -->"))] | last | .id // empty')
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$body" >/dev/null
+          else
+            gh pr comment "$PR" -R "$REPO" --body-file "$body"
+          fi
+
+      - name: o resumo
+        run: |
+          {
+            echo "### Argos"
+            echo "verdict \`${{ steps.argos.outputs.verdict }}\` · ${{ steps.argos.outputs.blocking }} blocking · modo \`${{ inputs.mode }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: o check
+        if: inputs.mode == 'block' && steps.argos.outputs.blocking != '0'
+        run: |
+          echo "::error::o Argos achou ${{ steps.argos.outputs.blocking }} problema(s) blocking; o parecer está no PR"
+          exit 1
