@@ -12,7 +12,8 @@ name: tests
 #   integration  the OLTP against a real database with the migrations, and the project's services, by its compose
 #   acceptance   the story's criteria as Given/When/Then, each named #<issue>/AC-n, against the assembled API
 #   contract     the authored contract, of the API and of the data, and the consumer's side of it
-#   workbench    a story per state of each component, with snapshot, visual regression and accessibility
+#   workbench    a story per state of each component, with snapshot, visual regression and accessibility, in the
+#                project's pinned Playwright container (its browsers and fonts are the references')
 #   quality      the data's expectations, on fixtures: freshness, uniqueness, nullability, ranges
 #
 # The tools are the project's: its component-map.yaml names them per lane (contract, workbench, visual, e2e,
@@ -170,13 +171,6 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: ${{ steps.has.outputs.pnpm_lock }}
-
-      # The workbench's browsers (Playwright), kept between runs: downloading them is most of the part.
-      - uses: actions/cache@v4
-        if: steps.has.outputs.run == 'true' && matrix.type == 'workbench'
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles(format('{0}/**/pnpm-lock.yaml', matrix.project)) }}
 
       # The components' published images (Loom, Tessera, the Shell): the compose of the integration pulls them, and
       # a test that runs inside an image built on loom/api (what imports Loom) builds on them.
