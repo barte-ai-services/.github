@@ -1,0 +1,213 @@
+name: tests
+
+# Reusable: the tests of the pull request, the same in every repository of the org. The template and the
+# workflow are the platform's; what each test does is the application's.
+#
+# The types of test are the ones the Ahrena dev workflow asks of each layer (ahrena-framework: driving-with-tdd,
+# specifying-with-bdd, testing-frontend, testing-data). Each is a target of the project's Makefile, and this
+# workflow only calls it:
+#
+#   unit         the domain red-first, the use cases against doubles for the ports, the front's state, each
+#                data transform on a fixture
+#   integration  the OLTP against a real database with the migrations, and the project's services, by its compose
+#   acceptance   the story's criteria as Given/When/Then, each named #<issue>/AC-n, against the assembled API
+#   contract     the authored contract, of the API and of the data, and the consumer's side of it
+#   workbench    a story per state of each component, with snapshot, visual regression and accessibility
+#   quality      the data's expectations, on fixtures: freshness, uniqueness, nullability, ranges
+#
+# The tools are the project's: its component-map.yaml names them per lane (contract, workbench, visual, e2e,
+# a11y, quality), and the Makefile runs them. A project that has not implemented a type answers "nothing to
+# test" (the target is a no-op, or absent), and the part is green.
+#
+# What reaches an environment (e2e, pentest, stress) is not here: it runs against staging, after the merge,
+# and holds the promotion of the rc, not the pull request.
+#
+# Which projects run: on a pull request, the ones the diff reaches, and all of them when the diff reaches a
+# shared path (the root's packages, the Makefile, the lock files, this workflow's caller). On a push or by
+# hand, all of them.
+#
+# Ativação no repo chamador (.github/workflows/ci.yml, as a job):
+#   tests:
+#     uses: barte-ai-services/.github/.github/workflows/tests.yml@main
+#     permissions:
+#       contents: read
+#       packages: read
+#       pull-requests: read
+#     with:
+#       projects: "projects/*"   # a component: "."
+#
+# The ruleset of main asks for the one check `tests`, which is green only when every part is.
+
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: "Glob of the project folders, each with a Makefile. An installation: projects/*. A component: ."
+        type: string
+        default: "projects/*"
+      types:
+        description: "The types of test to run, in order."
+        type: string
+        default: "unit integration acceptance contract workbench quality"
+      shared:
+        description: "Paths outside the projects that, changed, run every project (space-separated prefixes)."
+        type: string
+        default: "packages/ Makefile pyproject.toml uv.lock pnpm-lock.yaml pnpm-workspace.yaml package.json .github/workflows/"
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+jobs:
+  plan:
+    name: tests (plan)
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Each project folder with a Makefile, crossed with each type. On a pull request, only the projects the diff
+      # reaches, unless it reaches a shared path.
+      - name: which projects and which types
+        id: plan
+        env:
+          PROJECTS: ${{ inputs.projects }}
+          TYPES: ${{ inputs.types }}
+          SHARED: ${{ inputs.shared }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          shopt -s nullglob
+          projects=()
+          for dir in $PROJECTS; do
+            [ -f "$dir/Makefile" ] && projects+=("${dir%/}")
+          done
+          if [ "$EVENT" = pull_request ] && [ -n "$BASE" ]; then
+            changed=$(git diff --name-only "$BASE...$HEAD")
+            all=false
+            for prefix in $SHARED; do
+              grep -q "^$prefix" <<<"$changed" && all=true
+            done
+            if [ "$all" = false ]; then
+              reached=()
+              for p in "${projects[@]}"; do
+                if [ "$p" = . ] || grep -q "^$p/" <<<"$changed"; then reached+=("$p"); fi
+              done
+              projects=("${reached[@]+"${reached[@]}"}")
+            fi
+          fi
+          matrix=$(printf '%s\n' "${projects[@]+"${projects[@]}"}" | jq -Rnc --arg types "$TYPES" '
+            [inputs | select(. != "")] | unique as $p
+            | [$p[] as $project | ($types | split(" ") | map(select(. != "")))[] as $type
+               | {project: $project, type: $type, name: (if $project == "." then $type else "\($type) · \($project | split("/") | last)" end)}]
+            | {include: .}')
+          any=$(jq '.include | length > 0' <<<"$matrix")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Tests"
+            if [ "$any" = true ]; then
+              jq -r '.include | group_by(.project)[] | "- `\(.[0].project)`: \(map(.type) | join(", "))"' <<<"$matrix"
+            else
+              echo "Nothing this change reaches has tests to run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  part:
+    name: tests (${{ matrix.name }})
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.project }}
+      TYPE: ${{ matrix.type }}
+      # GitHub Packages (the Shell kit, the UI kit) asks for a token even to read.
+      NODE_AUTH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A type the project has not written is green, and the part stops here, before any setup.
+      - name: does the project have this type
+        id: has
+        run: |
+          if grep -qE "^test-$TYPE:" "$PROJECT/Makefile"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$PROJECT has no test-$TYPE in its Makefile: nothing to test"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+          # What the project is built with, to set up only that.
+          [ -f uv.lock ] || [ -n "$(find "$PROJECT" -name uv.lock -not -path '*/node_modules/*' -print -quit)" ] \
+            && echo "python=true" >> "$GITHUB_OUTPUT" || echo "python=false" >> "$GITHUB_OUTPUT"
+          lock=$(find "$PROJECT" -name pnpm-lock.yaml -not -path '*/node_modules/*' -print -quit)
+          [ -z "$lock" ] && [ -f pnpm-lock.yaml ] && lock=pnpm-lock.yaml
+          echo "pnpm_lock=$lock" >> "$GITHUB_OUTPUT"
+          echo "pnpm_dir=$( [ -n "$lock" ] && dirname "$lock" )" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.has.outputs.run == 'true' && steps.has.outputs.python == 'true'
+        with:
+          enable-cache: true
+
+      - uses: pnpm/action-setup@v4
+        if: steps.has.outputs.run == 'true' && steps.has.outputs.pnpm_lock != ''
+        with:
+          package_json_file: ${{ steps.has.outputs.pnpm_dir }}/package.json
+
+      - uses: actions/setup-node@v4
+        if: steps.has.outputs.run == 'true' && steps.has.outputs.pnpm_lock != ''
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: ${{ steps.has.outputs.pnpm_lock }}
+
+      # The workbench's browsers (Playwright), kept between runs: downloading them is most of the part.
+      - uses: actions/cache@v4
+        if: steps.has.outputs.run == 'true' && matrix.type == 'workbench'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles(format('{0}/**/pnpm-lock.yaml', matrix.project)) }}
+
+      # The integration pulls the components' published images (Loom, Tessera, the Shell).
+      - name: log in to ghcr
+        if: steps.has.outputs.run == 'true' && matrix.type == 'integration'
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: make test-${{ matrix.type }}
+        if: steps.has.outputs.run == 'true'
+        run: make -C "$PROJECT" "test-$TYPE"
+
+      # The visual diff and the reports, when a part fails: the reviewer sees what changed.
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.has.outputs.run == 'true'
+        with:
+          name: tests-${{ matrix.type }}-${{ strategy.job-index }}
+          path: |
+            ${{ matrix.project }}/**/test-results/
+            ${{ matrix.project }}/**/playwright-report/
+          if-no-files-found: ignore
+
+  # The one check the ruleset asks for by name.
+  tests:
+    name: tests
+    needs: [plan, part]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: every part passed
+        run: |
+          plan="${{ needs.plan.result }}"; part="${{ needs.part.result }}"
+          if [ "$plan" != success ] || { [ "$part" != success ] && [ "$part" != skipped ]; }; then
+            echo "::error::plan: $plan, parts: $part"
+            exit 1
+          fi
