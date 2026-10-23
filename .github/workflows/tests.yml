@@ -178,9 +178,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles(format('{0}/**/pnpm-lock.yaml', matrix.project)) }}
 
-      # The integration pulls the components' published images (Loom, Tessera, the Shell).
+      # The components' published images (Loom, Tessera, the Shell): the compose of the integration pulls them, and
+      # a test that runs inside an image built on loom/api (what imports Loom) builds on them.
       - name: log in to ghcr
-        if: steps.has.outputs.run == 'true' && matrix.type == 'integration'
+        if: steps.has.outputs.run == 'true'
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: make test-${{ matrix.type }}
