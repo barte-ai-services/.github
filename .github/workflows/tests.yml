@@ -169,8 +169,19 @@ jobs:
         if: steps.has.outputs.run == 'true' && steps.has.outputs.pnpm_lock != ''
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: ${{ steps.has.outputs.pnpm_lock }}
+
+      # The pnpm store, kept between runs. Not setup-node's `cache: pnpm`: that one fails the job when the part
+      # installed nothing (a type the project only answers "nothing to test"), and actions/cache only warns.
+      - name: where the pnpm store is
+        id: pnpm
+        if: steps.has.outputs.run == 'true' && steps.has.outputs.pnpm_lock != ''
+        run: echo "store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: steps.has.outputs.run == 'true' && steps.has.outputs.pnpm_lock != ''
+        with:
+          path: ${{ steps.pnpm.outputs.store }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles(steps.has.outputs.pnpm_lock) }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       # The components' published images (Loom, Tessera, the Shell): the compose of the integration pulls them, and
       # a test that runs inside an image built on loom/api (what imports Loom) builds on them.
