@@ -130,7 +130,7 @@ jobs:
       - name: o Argos lê o PR
         id: argos
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude-token }}
+          CLAUDE_KEY: ${{ secrets.claude-token }}
           ARGOS_MODEL: ${{ inputs.model }}
           GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -139,15 +139,22 @@ jobs:
           DECISOR_REGRESSION_MAX: ${{ inputs.regression-max }}
           DECISOR_MAX_WARNINGS: ${{ inputs.max-warnings }}
         run: |
-          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+          if [ -z "$CLAUDE_KEY" ]; then
             echo "::error::sem token do Claude: o caller não passou claude-token, ou o secret de org não alcança este repo"
             exit 1
           fi
+          # The secret holds either kind of key, and the Argos reads each from its own variable: an API key of the
+          # Console (sk-ant-api…) is ANTHROPIC_API_KEY, the token of `claude setup-token` (sk-ant-oat…) is
+          # CLAUDE_CODE_OAUTH_TOKEN. Swapping the key is then only `gh secret set`, whichever it is.
+          case "$CLAUDE_KEY" in
+            sk-ant-api*) export ANTHROPIC_API_KEY="$CLAUDE_KEY" ;;
+            *) export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_KEY" ;;
+          esac
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
           # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
           set +e
           docker run --rm \
-            -e CLAUDE_CODE_OAUTH_TOKEN -e ARGOS_MODEL -e GH_TOKEN \
+            -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
             -e DECISOR_AUTO_MERGE_MIN -e DECISOR_REGRESSION_MAX -e DECISOR_MAX_WARNINGS \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
