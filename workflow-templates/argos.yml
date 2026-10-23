@@ -1,0 +1,22 @@
+name: argos
+
+# O Argos, revisor da Ahrena, lê cada PR e publica o parecer, pelo reusable da org.
+# Começa em modo comment (só comenta). Troque para block quando o time confiar nos achados.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  argos:
+    uses: barte-ai-services/.github/.github/workflows/argos.yml@main
+    secrets:
+      claude-token: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
+      argos-app-private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
+      cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    with:
+      mode: comment

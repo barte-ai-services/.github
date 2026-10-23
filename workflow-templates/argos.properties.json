@@ -1,0 +1,6 @@
+{
+  "name": "Argos (code review por LLM)",
+  "description": "O Argos, revisor da Ahrena, lê cada PR contra as regras do ahrena-framework e publica o parecer (reusable da org). Começa em modo comment.",
+  "iconName": "eye",
+  "categories": ["Code quality"]
+}
