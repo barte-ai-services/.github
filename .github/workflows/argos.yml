@@ -173,6 +173,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           REPO: ${{ github.repository }}
+          # Quem publica edita só o comentário que é seu: editar um comentário não muda o autor, e o parecer
+          # tem de sair com a cara de quem o escreveu.
+          AUTHOR: ${{ steps.app.outputs.app-slug && format('{0}[bot]', steps.app.outputs.app-slug) || 'github-actions[bot]' }}
         run: |
           body="$RUNNER_TEMP/comment.md"
           jq -r '.comment // empty' "$RUNNER_TEMP/review.json" > "$body"
@@ -182,7 +185,7 @@ jobs:
           fi
           printf '\n<sub>commit %s · modo %s</sub>\n' "$HEAD" "${{ inputs.mode }}" >> "$body"
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
-            --jq '[.[] | select(.body | startswith("<!-- ahrena-review -->"))] | last | .id // empty')
+            --jq '[.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- ahrena-review -->")))] | last | .id // empty')
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$body" >/dev/null
           else
