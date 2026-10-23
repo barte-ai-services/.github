@@ -5,12 +5,18 @@ name: argos
 # ao CI e não soma tempo a ele.
 #
 # O Argos só lê: as ferramentas dele são Read, Grep e Glob, ele não sobe a aplicação, não builda e não roda
-# teste. Ele nunca aprova e nunca faz merge.
+# teste.
 #
 # Depois da review, o Decisor pergunta ao Clef (o modelo de decisão do Workers AI, @cf/cloudflare/clef) o
 # risco, a chance de regressão e a de o PR poder entrar sem humano, e aplica os limiares: a decisão é
-# auto_merge ou hold_for_human, com as probabilidades, e vai no parecer. Ele só informa: a regra da Barte
-# (ciclo de dev) é que o merge espera o CI verde, o check do Argos verde e um maintainer que não é o autor.
+# auto_merge ou hold_for_human, com as probabilidades, e vai no parecer.
+#
+# Quando o Argos aprova e o Decisor diz auto_merge, o reusable liga o auto-merge (squash) do PR com o token do
+# app do Argos: o GitHub faz o merge quando os checks obrigatórios do ruleset passam, e não antes. O token tem
+# de ser o do app, e não o github.token: um merge feito pelo github.token não dispara os workflows da main.
+# Num repo com o auto-merge desligado (o template, o infra), ou sem o app, o passo avisa e o PR espera um
+# humano. Para desligar num repo, o caller passa auto-merge: false. O app precisa de Contents: write.
+#
 # Precisa da variable de org CLOUDFLARE_ACCOUNT_ID e do secret CLOUDFLARE_API_TOKEN (escopo Workers AI).
 # Sem eles, ou com o Clef fora, a decisão é hold_for_human, e a review sai do mesmo jeito.
 #
@@ -52,6 +58,10 @@ on:
         description: "Modelo do Argos. Vazio: o default da plataforma, no ahrena-agents."
         type: string
         default: ""
+      auto-merge:
+        description: "Liga o auto-merge do PR quando o Argos aprova e o Decisor diz auto_merge."
+        type: boolean
+        default: true
       auto-merge-min:
         description: "Decisor: probabilidade mínima de auto_merge (0 a 1). Vazio: o default do ahrena-agents (0.85)."
         type: string
@@ -177,6 +187,25 @@ jobs:
             gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$body" >/dev/null
           else
             gh pr comment "$PR" -R "$REPO" --body-file "$body"
+          fi
+
+      - name: o merge, quando o Argos aprova e o Decisor diz auto_merge
+        if: >-
+          inputs.auto-merge
+          && steps.argos.outputs.verdict == 'approve'
+          && startsWith(steps.argos.outputs.decision, 'auto_merge')
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::o Decisor diz auto_merge, mas o app do Argos não deu token: o PR espera um humano"
+            exit 0
+          fi
+          if gh pr merge "$PR" -R "$REPO" --squash --auto --match-head-commit "$HEAD" 2> "$RUNNER_TEMP/merge.err"; then
+            echo "auto-merge ligado: o PR entra quando os checks obrigatórios passarem" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::o auto-merge não foi ligado, e o PR espera um humano: $(head -n1 "$RUNNER_TEMP/merge.err")"
           fi
 
       - name: o resumo
