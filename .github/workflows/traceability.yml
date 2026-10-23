@@ -1,0 +1,56 @@
+name: traceability
+
+# Reusable: every acceptance criterion the pull request closes has a test, and every test names a criterion that
+# exists. It is the Ahrena rule (ahrena-framework: contributing/rules/traceability.md), decided by its own hook,
+# check-traceability.py, read from the framework at a pinned commit:
+#
+#   1. every issue the pull request closes lists its criteria, numbered without gaps (AC-1, AC-2, ...)
+#   2. every live criterion of those issues is named by a test in the tree, with the token #<issue>/AC-<n>
+#   3. every criterion a changed test names exists and is live
+#
+# The criteria live in the body of the issue, under "Acceptance criteria", and nowhere else. A pull request that
+# closes no issue has nothing to trace, and the check is green.
+#
+# Ativação no repo chamador (.github/workflows/ci.yml, as a job):
+#   traceability:
+#     uses: barte-ai-services/.github/.github/workflows/traceability.yml@main
+#     permissions:
+#       contents: read
+#       issues: read
+#       pull-requests: read
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  traceability:
+    name: traceability
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      # ahrenatechnology/ahrena-framework, by the commit: the rule and its hook move together, and a new version of
+      # them comes in by a pull request here.
+      FRAMEWORK_REF: a66aafbc8c46a9ee626b6321bc6238879a6344ad
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ahrenatechnology/ahrena-framework
+          ref: ${{ env.FRAMEWORK_REF }}
+          path: .ahrena-framework
+          persist-credentials: false
+
+      - name: each criterion has a test, and each test a criterion
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .ahrena-framework/contributing/hooks/check-traceability.py
