@@ -17,5 +17,6 @@ jobs:
     secrets:
       claude-token: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
       argos-app-private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
+      cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     with:
       mode: comment

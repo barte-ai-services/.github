@@ -5,9 +5,14 @@ name: argos
 # ao CI e não soma tempo a ele.
 #
 # O Argos só lê: as ferramentas dele são Read, Grep e Glob, ele não sobe a aplicação, não builda e não roda
-# teste. Ele nunca aprova e nunca faz merge. A regra da Barte (ciclo de dev) é que o merge espera o CI verde,
-# o check do Argos verde e a aprovação de um maintainer que não é o autor. Por isso o Decisor (Clef), que
-# faria o auto-merge, fica desligado: sem as credenciais do Cloudflare ele segura para humano.
+# teste. Ele nunca aprova e nunca faz merge.
+#
+# Depois da review, o Decisor pergunta ao Clef (o modelo de decisão do Workers AI, @cf/cloudflare/clef) o
+# risco, a chance de regressão e a de o PR poder entrar sem humano, e aplica os limiares: a decisão é
+# auto_merge ou hold_for_human, com as probabilidades, e vai no parecer. Ele só informa: a regra da Barte
+# (ciclo de dev) é que o merge espera o CI verde, o check do Argos verde e um maintainer que não é o autor.
+# Precisa da variable de org CLOUDFLARE_ACCOUNT_ID e do secret CLOUDFLARE_API_TOKEN (escopo Workers AI).
+# Sem eles, ou com o Clef fora, a decisão é hold_for_human, e a review sai do mesmo jeito.
 #
 # Dois modos:
 #   comment  o parecer vai como comentário e o check fica verde. É o modo de calibrar (o default).
@@ -29,9 +34,10 @@ name: argos
 #       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
 #       secrets:
 #         claude-token: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
-#         argos-app-private-key: ${{ secrets.argos-app-private-key }}
+#         argos-app-private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
+#         cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 #
-# Os secrets vão pelo nome, e não por `secrets: inherit`: o reusable recebe só os dois que usa. O token do
+# Os secrets vão pelo nome, e não por `secrets: inherit`: o reusable recebe só os três que usa. O token do
 # Claude é o secret de org BARTE_ARGOS_CLAUDE_TOKEN (claude setup-token), visível aos repos privados;
 # enquanto ele não existe, vale o BARTE_HAROLD_CLAUDE_TOKEN.
 
@@ -46,12 +52,27 @@ on:
         description: "Modelo do Argos. Vazio: o default da plataforma, no ahrena-agents."
         type: string
         default: ""
+      auto-merge-min:
+        description: "Decisor: probabilidade mínima de auto_merge (0 a 1). Vazio: o default do ahrena-agents (0.85)."
+        type: string
+        default: ""
+      regression-max:
+        description: "Decisor: probabilidade máxima de regressão tolerada (0 a 1). Vazio: o default (0.15)."
+        type: string
+        default: ""
+      max-warnings:
+        description: "Decisor: acima de tantos warnings, segura para humano sem perguntar ao Clef. Vazio: o default (2)."
+        type: string
+        default: ""
     secrets:
       claude-token:
         description: "O token do Claude Code (claude setup-token) com que o Argos roda."
         required: true
       argos-app-private-key:
         description: "A chave do app argos-by-ahrena. Sem ela, o parecer sai como github-actions[bot]."
+        required: false
+      cloudflare-api-token:
+        description: "O token da Cloudflare, com escopo Workers AI, com que o Decisor pergunta ao Clef."
         required: false
 
 permissions:
@@ -102,6 +123,11 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude-token }}
           ARGOS_MODEL: ${{ inputs.model }}
           GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare-api-token }}
+          DECISOR_AUTO_MERGE_MIN: ${{ inputs.auto-merge-min }}
+          DECISOR_REGRESSION_MAX: ${{ inputs.regression-max }}
+          DECISOR_MAX_WARNINGS: ${{ inputs.max-warnings }}
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
             echo "::error::sem token do Claude: o caller não passou claude-token, ou o secret de org não alcança este repo"
@@ -112,6 +138,8 @@ jobs:
           set +e
           docker run --rm \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ARGOS_MODEL -e GH_TOKEN \
+            -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
+            -e DECISOR_AUTO_MERGE_MIN -e DECISOR_REGRESSION_MAX -e DECISOR_MAX_WARNINGS \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
             -v "$PWD:/repo" -w /repo \
             "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \
@@ -127,6 +155,8 @@ jobs:
           blocking=$(jq '[.findings[]? | select(.severity == "blocking")] | length' "$RUNNER_TEMP/review.json")
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
+          decision=$(jq -r '.decision // "hold_for_human: sem decisor"' "$RUNNER_TEMP/review.json" | head -n1)
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
       # Um comentário só por PR, editado a cada push: o marcador <!-- ahrena-review --> do runtime o acha.
       - name: o parecer, no PR
@@ -154,6 +184,8 @@ jobs:
           {
             echo "### Argos"
             echo "verdict \`${{ steps.argos.outputs.verdict }}\` · ${{ steps.argos.outputs.blocking }} blocking · modo \`${{ inputs.mode }}\`"
+            echo
+            echo "Decisor: \`${{ steps.argos.outputs.decision }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: o check
