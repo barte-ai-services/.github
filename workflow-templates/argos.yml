@@ -14,6 +14,8 @@ permissions:
 jobs:
   argos:
     uses: barte-ai-services/.github/.github/workflows/argos.yml@main
-    secrets: inherit
+    secrets:
+      claude-token: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
+      argos-app-private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
     with:
       mode: comment

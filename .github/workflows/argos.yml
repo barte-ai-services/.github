@@ -27,10 +27,13 @@ name: argos
 #   jobs:
 #     argos:
 #       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
-#       secrets: inherit
+#       secrets:
+#         claude-token: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
+#         argos-app-private-key: ${{ secrets.argos-app-private-key }}
 #
-# O token do Claude é o secret de org BARTE_ARGOS_CLAUDE_TOKEN (claude setup-token), visível aos repos
-# privados. Enquanto ele não existe, vale o BARTE_HAROLD_CLAUDE_TOKEN.
+# Os secrets vão pelo nome, e não por `secrets: inherit`: o reusable recebe só os dois que usa. O token do
+# Claude é o secret de org BARTE_ARGOS_CLAUDE_TOKEN (claude setup-token), visível aos repos privados;
+# enquanto ele não existe, vale o BARTE_HAROLD_CLAUDE_TOKEN.
 
 on:
   workflow_call:
@@ -43,6 +46,13 @@ on:
         description: "Modelo do Argos. Vazio: o default da plataforma, no ahrena-agents."
         type: string
         default: ""
+    secrets:
+      claude-token:
+        description: "O token do Claude Code (claude setup-token) com que o Argos roda."
+        required: true
+      argos-app-private-key:
+        description: "A chave do app argos-by-ahrena. Sem ela, o parecer sai como github-actions[bot]."
+        required: false
 
 permissions:
   contents: read
@@ -69,6 +79,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
+      HAS_APP_KEY: ${{ secrets.argos-app-private-key != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,22 +89,22 @@ jobs:
 
       - name: o token do Argos (app argos-by-ahrena), quando a org o tem
         id: app
-        if: vars.ARGOS_APP_ID != ''
+        if: vars.ARGOS_APP_ID != '' && env.HAS_APP_KEY == 'true'
         continue-on-error: true
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.ARGOS_APP_ID }}
-          private-key: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.argos-app-private-key }}
 
       - name: o Argos lê o PR
         id: argos
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.BARTE_ARGOS_CLAUDE_TOKEN || secrets.BARTE_HAROLD_CLAUDE_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude-token }}
           ARGOS_MODEL: ${{ inputs.model }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-            echo "::error::sem token do Claude: o secret de org BARTE_ARGOS_CLAUDE_TOKEN não alcança este repo"
+            echo "::error::sem token do Claude: o caller não passou claude-token, ou o secret de org não alcança este repo"
             exit 1
           fi
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
