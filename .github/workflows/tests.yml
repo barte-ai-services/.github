@@ -184,14 +184,22 @@ jobs:
           restore-keys: pnpm-${{ runner.os }}-
 
       # The components' published images (Loom, Tessera, the Shell): the compose of the integration pulls them, and
-      # a test that runs inside an image built on loom/api (what imports Loom) builds on them.
-      - name: log in to ghcr
-        if: steps.has.outputs.run == 'true'
-        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
+      # a test that runs inside an image built on loom/api (what imports Loom) builds on them. The login lives only
+      # in this step: in a DOCKER_CONFIG of its own, logged out and removed when the step ends, pass or fail. A
+      # `docker login` of its own step would leave the token in plain text in ~/.docker/config.json for every step
+      # after it, the upload of the reports included.
       - name: make test-${{ matrix.type }}
         if: steps.has.outputs.run == 'true'
-        run: make -C "$PROJECT" "test-$TYPE"
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          DOCKER_CONFIG=$(mktemp -d "$RUNNER_TEMP/docker.XXXXXX")
+          export DOCKER_CONFIG
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+          unset GHCR_TOKEN
+          make -C "$PROJECT" "test-$TYPE"
 
       # The visual diff and the reports, when a part fails: the reviewer sees what changed.
       - uses: actions/upload-artifact@v4
