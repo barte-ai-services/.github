@@ -7,7 +7,8 @@ name: auto-merge
 # - Passa por todo repositório não arquivado com allow_auto_merge ligado. O infra e o template
 #   (barte-ai-platform) têm a setting desligada de propósito, pela tabela .github/platform-repos.json
 #   do infra: neles o merge é um clique do Fernando, e este workflow não toca.
-# - Pula PR em draft e PR que já tem auto-merge.
+# - Pula PR em draft, PR que já tem auto-merge e PR com o label argos:hold: o Argos é quem decide o merge
+#   onde ele roda, e o label diz que ele segurou o PR. Onde o Argos não roda, este workflow segue ligando.
 # - Um PR atrás da main (BEHIND), num repo que exige a branch atualizada, tem a branch atualizada,
 #   para o CI rodar de novo e o auto-merge seguir.
 # - PR empilhado (stack) não aceita auto-merge no GitHub: é relatado e seguido adiante.
@@ -53,8 +54,9 @@ jobs:
             [ "$(jq -r '.allow_auto_merge' <<<"$settings")" = "true" ] || continue
             method="$(jq -r 'if .allow_merge_commit then "--merge" elif .allow_squash_merge then "--squash" else "--rebase" end' <<<"$settings")"
             prs="$(gh pr list -R "$OWNER/$repo" --state open --limit 200 \
-              --json number,isDraft,autoMergeRequest,mergeStateStatus \
-              --jq '.[] | select(.isDraft | not) | "\(.number)\t\(.autoMergeRequest != null)\t\(.mergeStateStatus)"')" || continue
+              --json number,isDraft,autoMergeRequest,mergeStateStatus,labels \
+              --jq '.[] | select(.isDraft | not) | select([.labels[].name] | index("argos:hold") | not)
+                | "\(.number)\t\(.autoMergeRequest != null)\t\(.mergeStateStatus)"')" || continue
             while IFS=$'\t' read -r n auto state; do
               [ -n "$n" ] || continue
               if [ "$state" = "BEHIND" ] && gh pr update-branch "$n" -R "$OWNER/$repo" >/dev/null 2>&1; then

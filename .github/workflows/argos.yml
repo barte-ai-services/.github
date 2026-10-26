@@ -199,6 +199,38 @@ jobs:
             gh pr comment "$PR" -R "$REPO" --body-file "$body"
           fi
 
+      # O Argos é quem decide o merge. Quando ele não libera (qualquer coisa que não seja approve com o
+      # Decisor dizendo auto_merge: um bloqueante, warnings acima do corte, uma checagem vermelha, um fix
+      # do Erodos ainda por revisar, ou o Argos que não rodou), o PR ganha o label argos:hold e o auto-merge
+      # sai, se alguém o tinha ligado. O auto-merge.yml da org não liga o auto-merge num PR com esse label.
+      # Este passo roda antes de o job terminar, e o check do Argos só fica verde no fim: o GitHub não tem
+      # como mesclar entre os dois. Quando uma revisão seguinte libera, o label sai.
+      - name: o argos:hold, quando o Argos não libera o merge
+        if: always() && steps.argos.conclusion != 'cancelled'
+        env:
+          # O label vai com o token do job (pull-requests: write); desligar o auto-merge, com o do app, que
+          # é quem o liga.
+          GH_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+          VERDICT: ${{ steps.argos.outputs.verdict }}
+          DECISION: ${{ steps.argos.outputs.decision }}
+        run: |
+          label="argos:hold"
+          if [ "$VERDICT" = approve ] && [[ "$DECISION" == auto_merge* ]]; then
+            gh pr edit "$PR" -R "$REPO" --remove-label "$label" >/dev/null 2>&1 || true
+            echo "o Argos libera o merge" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh label create "$label" -R "$REPO" --color B60205 \
+            --description "O Argos segurou o PR: o auto-merge fica desligado até uma revisão aprovar" >/dev/null 2>&1 || true
+          gh pr edit "$PR" -R "$REPO" --add-label "$label" >/dev/null
+          if [ "$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
+            GH_TOKEN="$MERGE_TOKEN" gh pr merge "$PR" -R "$REPO" --disable-auto >/dev/null
+            echo "auto-merge desligado" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "o Argos segura o PR (verdict \`${VERDICT:-?}\`, decisor \`${DECISION:-?}\`): label $label" >> "$GITHUB_STEP_SUMMARY"
+
       - name: o merge, quando o Argos aprova e o Decisor diz auto_merge
         if: >-
           inputs.auto-merge
