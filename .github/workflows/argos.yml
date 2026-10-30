@@ -7,6 +7,12 @@ name: argos
 # O Argos só lê: as ferramentas dele são Read, Grep e Glob, ele não sobe a aplicação, não builda e não roda
 # teste.
 #
+# Desde a v1.3.0, o Argos lê o resultado das outras checagens do commit antes de dar o parecer, e espera
+# até 15 min que elas terminem. Uma checagem vermelha vira achado bloqueante e o PR fica para uma pessoa.
+# Para ler, o caller dá ao workflow `checks: read` e `statuses: read`. Sem essas permissões, o Argos revisa
+# como antes e o comentário diz que o parecer não considera o CI. O reusable não pede as duas permissões:
+# um reusable que pede mais do que o caller dá derruba o workflow.
+#
 # Depois da review, o Decisor pergunta ao Clef (o modelo de decisão do Workers AI, @cf/cloudflare/clef) o
 # risco, a chance de regressão e a de o PR poder entrar sem humano, e aplica os limiares: a decisão é
 # auto_merge ou hold_for_human, com as probabilidades, e vai no parecer.
@@ -14,7 +20,7 @@ name: argos
 # Quando o Argos aprova e o Decisor diz auto_merge, o reusable liga o auto-merge (squash) do PR com o token do
 # app do Argos: o GitHub faz o merge quando os checks obrigatórios do ruleset passam, e não antes. O token tem
 # de ser o do app, e não o github.token: um merge feito pelo github.token não dispara os workflows da main.
-# Num repo com o auto-merge desligado (o template, o infra), ou sem o app, o passo avisa e o PR espera um
+# Num repo com o auto-merge desligado (o template), ou sem o app, o passo avisa e o PR espera um
 # humano. Para desligar num repo, o caller passa auto-merge: false. O app precisa de Contents: write.
 #
 # Precisa da variable de org CLOUDFLARE_ACCOUNT_ID e do secret CLOUDFLARE_API_TOKEN (escopo Workers AI).
@@ -35,6 +41,8 @@ name: argos
 #   permissions:
 #     contents: read
 #     pull-requests: write
+#     checks: read
+#     statuses: read
 #   jobs:
 #     argos:
 #       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
@@ -105,8 +113,8 @@ jobs:
       group: argos-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     env:
-      # ahrenatechnology/ahrena-agents v1.2.1, pelo digest: uma tag no registry pode ser movida.
-      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:f8c7d2ffa77bf0a237da59dc57526292b622e6ac12b589a40c6cad646c41a95c
+      # ahrenatechnology/ahrena-agents v1.3.0, pelo digest: uma tag no registry pode ser movida.
+      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:850bba6d1023ede86ed6891412b4ed3f0caa7da80807279ad076eec745b30b9c
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
@@ -157,6 +165,7 @@ jobs:
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
             -e DECISOR_AUTO_MERGE_MIN -e DECISOR_REGRESSION_MAX -e DECISOR_MAX_WARNINGS \
+            -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_API_URL \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
             -v "$PWD:/repo" -w /repo \
             "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \

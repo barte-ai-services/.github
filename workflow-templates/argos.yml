@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  checks: read # o resultado do CI, que o Argos lê antes do parecer
+  statuses: read
 
 jobs:
   argos:
