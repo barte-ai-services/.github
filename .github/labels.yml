@@ -88,3 +88,8 @@
 - name: "wontfix"
   color: "ffffff"
   description: "Não será trabalhado"
+
+# --- review ---
+- name: "argos:hold"
+  color: "B60205"
+  description: "O Argos segurou o PR: o auto-merge fica desligado até uma revisão aprovar"
