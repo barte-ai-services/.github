@@ -4,9 +4,9 @@ name: auto-merge
 # clicar (barte-ai-services/infra#183). Quem decide o que segura o merge é o ruleset de cada repo, que
 # exige só os checks de CI; este workflow só garante que o auto-merge esteja ligado.
 #
-# - Passa por todo repositório não arquivado com allow_auto_merge ligado. O infra e o template
-#   (barte-ai-platform) têm a setting desligada de propósito, pela tabela .github/platform-repos.json
-#   do infra: neles o merge é um clique do Fernando, e este workflow não toca.
+# - Passa por todo repositório não arquivado com allow_auto_merge ligado. O template
+#   (barte-ai-platform) tem a setting desligada de propósito, pela tabela .github/platform-repos.json
+#   do infra: nele o merge é um clique do Fernando, e este workflow não toca.
 # - Pula PR em draft, PR que já tem auto-merge e PR com o label argos:hold: o Argos é quem decide o merge
 #   onde ele roda, e o label diz que ele segurou o PR. Onde o Argos não roda, este workflow segue ligando.
 # - Um PR atrás da main (BEHIND), num repo que exige a branch atualizada, tem a branch atualizada,
