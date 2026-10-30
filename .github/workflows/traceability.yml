@@ -8,7 +8,7 @@ name: traceability
 #   2. every live criterion of those issues is named by a test in the tree, with the token #<issue>/AC-<n>
 #   3. every criterion a changed test names exists and is live
 #
-# The criteria live in the body of the issue, under "Acceptance criteria", and nowhere else. A pull request that
+# The criteria live in the body of the issue, under "Acceptance criteria" or "Critérios de aceite", and nowhere else. A pull request that
 # closes no issue has nothing to trace, and the check is green.
 #
 # Ativação no repo chamador (.github/workflows/ci.yml, as a job):
@@ -35,7 +35,7 @@ jobs:
     env:
       # ahrenatechnology/ahrena-framework, by the commit: the rule and its hook move together, and a new version of
       # them comes in by a pull request here.
-      FRAMEWORK_REF: a66aafbc8c46a9ee626b6321bc6238879a6344ad
+      FRAMEWORK_REF: a30cd6e474ebb42390276d64a341d82c613f9ded
     steps:
       - uses: actions/checkout@v4
         with:
