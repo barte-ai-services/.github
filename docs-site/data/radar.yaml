@@ -1,0 +1,363 @@
+# O Tech Radar da Barte: a fonte única. O site gera a página a partir daqui
+# (scripts/radar.mjs) e, depois, um servidor MCP lê o mesmo arquivo.
+#
+# Mudar um anel é um pull request neste arquivo, decidido pela liderança de
+# plataforma. Chaves e ids em inglês; valores em pt-BR.
+#
+# Campos de cada tecnologia: id (kebab-case, estável), name, quadrant, ring,
+# what, how; opcionais: version e replaces (o id do que usar no lugar).
+
+rings:
+  - id: adopt
+    name: Adopt
+    description: O padrão da Barte. Use em projeto novo.
+  - id: trial
+    name: Trial
+    description: Em uso real num módulo, mas ainda não é padrão. Use onde já está e, fora dele, combine antes com o time de plataforma.
+  - id: assess
+    name: Assess
+    description: Em avaliação. Vale estudar e prototipar, mas não leve para produção.
+  - id: hold
+    name: Hold
+    description: Não comece nada novo com isto. O que já usa fica, e a coluna «Use no lugar» diz o que adotar.
+
+quadrants:
+  - id: languages
+    name: Linguagens e runtimes
+  - id: frameworks
+    name: Frameworks e bibliotecas
+  - id: platforms
+    name: Plataformas e infraestrutura
+  - id: tools
+    name: Ferramentas
+    description: Testes, lint, CI e desenvolvimento local.
+
+technologies:
+  # --- adopt -----------------------------------------------------------------
+  - id: typescript
+    name: TypeScript
+    quadrant: languages
+    ring: adopt
+    version: "Node 24, pnpm 11"
+    what: A linguagem das telas, dos serviços em Node e dos servidores MCP em TypeScript.
+    how: Siga a raiz de `barte-ai-services/shell`, onde `packageManager` fixa o pnpm 11 e o `pnpm-workspace.yaml` separa apps e pacotes.
+
+  - id: python
+    name: Python
+    quadrant: languages
+    ring: adopt
+    version: "3.12+, uv"
+    what: A linguagem dos dados, dos workflows, dos agentes e das APIs de domínio.
+    how: Copie `projects/exemplo` de `barte-ai-services/barte-ai-platform`, com `requires-python = ">=3.12"` no `pyproject.toml` e o `uv.lock` versionado.
+
+  - id: nextjs
+    name: Next.js + React + ui-kit e shell-kit
+    quadrant: frameworks
+    ring: adopt
+    version: "Next.js 16, React 19"
+    what: As telas. Cada tela de módulo é uma zone que veste a moldura do Shell.
+    how: Instale `@barte-ai-services/barte-ui-kit` e `@barte-ai-services/shell-kit`, do GitHub Packages. A zone de exemplo está em `examples/zone` de `barte-ai-services/shell`, e a de um projeto em `projects/exemplo/apps/web` de `barte-ai-services/barte-ai-platform`.
+
+  - id: fastapi
+    name: FastAPI
+    quadrant: frameworks
+    ring: adopt
+    what: As APIs HTTP em Python.
+    how: Siga `projects/exemplo/apps/api` de `barte-ai-services/barte-ai-platform`, que pluga as rotas do domínio na API do Workflow Manager.
+
+  - id: mcp-sdk
+    name: MCP SDK (TypeScript e Python)
+    quadrant: frameworks
+    ring: adopt
+    what: Os servidores MCP, que expõem um módulo aos agentes.
+    how: Em Python, o pacote `mcp`, como nos servidores MCP do Data Operator (`apps/data-operator-mcp` de `barte-ai-services/chronicle`). Em TypeScript, o SDK oficial `@modelcontextprotocol/sdk`; fale com o time de plataforma para o exemplo de referência.
+
+  - id: opentelemetry
+    name: OpenTelemetry + Collector
+    quadrant: frameworks
+    ring: adopt
+    what: Log estruturado, traces e métricas, exportados por OTLP.
+    how: Use o pacote `packages/observability` de `barte-ai-services/barte-ai-platform`, por onde passa todo app e todo worker. Para ver localmente, o compose do Data Operator sobe um Collector com `make up OBSERVABILITY=true`.
+
+  - id: terraform
+    name: Terraform
+    quadrant: platforms
+    ring: adopt
+    what: Toda a infraestrutura, como código.
+    how: Cada módulo traz o seu Terraform em `deploy/terraform`, e a instalação os compõe em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Um projeto sobe os apps dele por `projects/exemplo/deploy/aws/terraform`, que lê os outputs da instalação.
+
+  - id: ecs-fargate
+    name: AWS ECS Fargate
+    quadrant: platforms
+    ring: adopt
+    what: Onde rodam os serviços e os workers em contêiner.
+    how: O Terraform de `projects/exemplo/deploy/aws/terraform` (`barte-ai-services/barte-ai-platform`) sobe o worker como serviço ECS no cluster da instalação.
+
+  - id: aurora-postgresql
+    name: Aurora PostgreSQL Serverless v2
+    quadrant: platforms
+    ring: adopt
+    what: O banco relacional.
+    how: O módulo do Workflow Manager sobe o Aurora da instalação, e o projeto lê o endereço pelos outputs de `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Fale com o time de plataforma antes de criar outro cluster.
+
+  - id: dynamodb
+    name: DynamoDB
+    quadrant: platforms
+    ring: adopt
+    what: Estado chave-valor de baixa latência.
+    how: Veja o uso no Integration Gateway, no pacote `packages/dynamo` e no Terraform de `deploy/terraform` de `barte-ai-services/gatekeeper`.
+
+  - id: s3-kms-secrets
+    name: S3, KMS e Secrets Manager
+    quadrant: platforms
+    ring: adopt
+    what: Arquivos, chaves de cifra e credenciais.
+    how: A credencial nunca fica no código; o pacote `packages/secrets` de `barte-ai-services/barte-ai-platform` a lê do cofre da nuvem. A chave KMS e o bucket vêm do Terraform da instalação.
+
+  - id: lambda-api-gateway
+    name: AWS Lambda + API Gateway
+    quadrant: platforms
+    ring: adopt
+    what: O núcleo de um servidor MCP sem servidor.
+    how: Siga o núcleo do Backstage em `control-plane/backstage` de `barte-ai-services/infra`, com uma API HTTP com a rota `/mcp` e uma Lambda em Node 24 e arm64.
+
+  - id: temporal
+    name: Temporal (Workflow Manager)
+    quadrant: platforms
+    ring: adopt
+    what: Os processos duráveis, com espera, retentativa e aprovação humana.
+    how: Copie `projects/exemplo` de `barte-ai-services/barte-ai-platform`, que já traz o workflow, a activity e o worker ligados ao Workflow Manager (`barte-ai-services/loom`). Não suba um Temporal próprio.
+
+  - id: keycloak
+    name: Keycloak (Identity Manager)
+    quadrant: platforms
+    ring: adopt
+    what: A identidade, o emissor OIDC da instalação.
+    how: Não suba um Keycloak próprio. O módulo do Identity Manager (`modules/tessera` em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`) é o emissor, e o compose de `projects/exemplo` o sobe localmente.
+
+  - id: bedrock
+    name: Amazon Bedrock (Claude)
+    quadrant: platforms
+    ring: adopt
+    what: Os modelos de linguagem que os workers e os agentes invocam.
+    how: O worker só invoca os modelos listados em `bedrock_model_ids`, no Terraform do Workflow Manager, então trocar de modelo é uma mudança de infraestrutura, e não uma variável de ambiente.
+
+  - id: floci
+    name: Floci
+    quadrant: tools
+    ring: adopt
+    what: O emulador local da AWS (S3, KMS, Secrets Manager, Bedrock e outros).
+    how: O compose de `projects/exemplo/deploy/compose` (`barte-ai-services/barte-ai-platform`) sobe o Floci e cria nele o que o Terraform criará na AWS.
+
+  - id: docker-multiarch
+    name: Docker, imagens multi-arquitetura
+    quadrant: tools
+    ring: adopt
+    version: "amd64 + arm64"
+    what: Toda imagem publicada roda em amd64 e em arm64.
+    how: Veja `.github/workflows/release.yml` de `barte-ai-services/shell`, que constrói por arquitetura e confere que o manifesto tem `linux/amd64` e `linux/arm64`.
+
+  - id: github-actions
+    name: GitHub Actions + workflows reutilizáveis
+    quadrant: tools
+    ring: adopt
+    what: O CI de todo repositório e os gates do pull request.
+    how: Comece pelo modelo `ci` desta organização (Actions › New workflow), que chama `tests`, `traceability`, `conventional-pr` e `handbook-check`. A review automática vem do modelo `argos`. Veja [Adoção](/how-we-work/adoption).
+
+  - id: vitest
+    name: Vitest
+    quadrant: tools
+    ring: adopt
+    what: Os testes de TypeScript.
+    how: Use um `vitest.config.mts` na raiz, como em `barte-ai-services/shell`. O alvo do Makefile roda os testes, e o workflow `tests` chama o alvo.
+
+  - id: pytest
+    name: pytest
+    quadrant: tools
+    ring: adopt
+    what: Os testes de Python.
+    how: Configure em `[tool.pytest.ini_options]` no `pyproject.toml`, como em `projects/exemplo` de `barte-ai-services/barte-ai-platform`. O alvo do Makefile roda os testes, e o workflow `tests` chama o alvo.
+
+  - id: playwright
+    name: Playwright
+    quadrant: tools
+    ring: adopt
+    what: Os testes de tela, com snapshot, regressão visual e acessibilidade.
+    how: O tipo `workbench` do workflow `tests` roda no contêiner Playwright fixado do projeto, com os navegadores e as fontes das referências.
+
+  - id: eslint-prettier
+    name: ESLint + Prettier
+    quadrant: tools
+    ring: adopt
+    what: O lint e a formatação de TypeScript.
+    how: Use um `eslint.config.mjs` (flat config) na raiz e o Prettier nas dependências de desenvolvimento, como em `barte-ai-services/shell`.
+
+  - id: ruff-mypy
+    name: Ruff + mypy
+    quadrant: tools
+    ring: adopt
+    what: O lint, a formatação e a checagem de tipos de Python.
+    how: Configure em `[tool.ruff]` e `[tool.mypy]` no `pyproject.toml`, como em `barte-ai-services/chronicle`.
+
+  - id: docs-template
+    name: docs-template (Fumadocs)
+    quadrant: tools
+    ring: adopt
+    what: O site de documentação de todo projeto, e deste handbook.
+    how: Crie o `docs-site/` com a skill de `barte-ai-services/docs-template`. Veja [Documentação](/how-we-work/documentation).
+
+  # --- trial -----------------------------------------------------------------
+  - id: go
+    name: Go
+    quadrant: languages
+    ring: trial
+    what: Hoje, só um serviço auxiliar.
+    how: Fale com o time de plataforma antes de começar um serviço novo em Go.
+
+  - id: celery
+    name: Celery
+    quadrant: frameworks
+    ring: trial
+    what: Hoje, só no Data Operator, nos workers de coleta.
+    how: Use dentro do Data Operator (`barte-ai-services/chronicle`). Fora dele, os processos duráveis vão para o Workflow Manager.
+
+  - id: airflow
+    name: Apache Airflow
+    quadrant: platforms
+    ring: trial
+    what: Hoje, só no Data Operator, como agendador dos DAGs por provedor.
+    how: Vem pelo módulo do Data Operator, ligado em `chronicle_enabled` no `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Fale com o time de plataforma antes de usar fora dele.
+
+  - id: cube
+    name: Cube
+    quadrant: platforms
+    ring: trial
+    what: Hoje, só no Data Operator, como a camada de consulta.
+    how: Use pelo Data Operator (`barte-ai-services/chronicle`). Fale com o time de plataforma antes de adotar fora dele.
+
+  - id: arcadedb
+    name: ArcadeDB
+    quadrant: platforms
+    ring: trial
+    what: Hoje, só no Data Operator, como o banco de grafo.
+    how: Use pelo Data Operator (`barte-ai-services/chronicle`). Fale com o time de plataforma antes de adotar fora dele.
+
+  - id: envoy
+    name: Envoy
+    quadrant: platforms
+    ring: trial
+    what: Hoje, só no Integration Gateway, como o plano de dados.
+    how: Use pelo Integration Gateway (`barte-ai-services/gatekeeper`), sem subir um Envoy próprio.
+
+  - id: k6
+    name: k6
+    quadrant: tools
+    ring: trial
+    what: Os testes de carga e de stress.
+    how: O stress roda contra staging depois do merge, e não no pull request. Fale com o time de plataforma antes de adotar.
+
+  - id: mcpb
+    name: mcpb (MCP bundles)
+    quadrant: tools
+    ring: trial
+    what: O empacotamento de um servidor MCP para instalar no cliente de IA.
+    how: Fale com o time de plataforma antes de adotar.
+
+  # --- assess ----------------------------------------------------------------
+  - id: cloudflare-workers-ai
+    name: Cloudflare Workers AI
+    quadrant: platforms
+    ring: assess
+    what: O decisor da review automática.
+    how: Só no workflow `argos` desta organização, que pergunta ao modelo de decisão o risco do pull request. Não use em projeto.
+
+  - id: storybook
+    name: Storybook
+    quadrant: tools
+    ring: assess
+    what: Catálogo de componentes, em avaliação.
+    how: Hoje, o tipo `workbench` do workflow `tests` já cobre uma história por estado de cada componente, com Playwright. Fale com o time de plataforma antes de adotar.
+
+  - id: schemathesis
+    name: schemathesis
+    quadrant: tools
+    ring: assess
+    what: Testes de API gerados do contrato, em avaliação.
+    how: Fale com o time de plataforma antes de adotar.
+
+  - id: data-quality-tests
+    name: great_expectations / dbt tests
+    quadrant: tools
+    ring: assess
+    what: Testes das expectativas dos dados. Citados, sem uso real.
+    how: Fale com o time de plataforma antes de adotar.
+
+  # --- hold ------------------------------------------------------------------
+  - id: node-22-25
+    name: Node 22 e 25
+    quadrant: languages
+    ring: hold
+    what: Versões de Node fora do padrão.
+    how: Suba para o Node 24 na próxima mudança do projeto.
+    replaces: typescript
+
+  - id: sqlmesh
+    name: SQLMesh
+    quadrant: frameworks
+    ring: hold
+    what: Rejeitado. O motor do silver do Data Operator é código próprio.
+    how: Não use. A decisão está no ADR-0030 de `barte-ai-services/chronicle`.
+
+  - id: next-auth-beta
+    name: next-auth em beta
+    quadrant: frameworks
+    ring: hold
+    what: A autenticação do Next.js na versão beta.
+    how: Mantenha onde está e não adote em projeto novo. A identidade vem do Identity Manager.
+
+  - id: neo4j
+    name: Neo4j
+    quadrant: platforms
+    ring: hold
+    what: Banco de grafo substituído no Data Operator.
+    how: Não use em código novo.
+    replaces: arcadedb
+
+  - id: localstack
+    name: LocalStack
+    quadrant: tools
+    ring: hold
+    what: Emulador local da AWS substituído.
+    how: Troque pelo Floci quando mexer no compose do projeto.
+    replaces: floci
+
+  - id: mkdocs
+    name: MkDocs em projeto novo
+    quadrant: tools
+    ring: hold
+    what: O gerador de documentação antigo.
+    how: Os sites que já usam ficam. Projeto novo começa no docs-template.
+    replaces: docs-template
+
+drift:
+  - name: TypeScript
+    versions: "5.9, 6 e 7"
+    note: Três versões maiores convivem nos repositórios; a padronizar.
+  - name: ESLint
+    versions: "9 e 10"
+    note: Duas versões maiores convivem nos repositórios; a padronizar.
+  - name: Python
+    versions: "3.12 a 3.14"
+    note: O mínimo é 3.12.
+  - name: Node
+    versions: "22, 24 e 25"
+    note: O padrão é o Node 24.
+  - name: Next.js
+    versions: "16.3 a 16.4"
+    note: Versões menores diferentes convivem; a padronizar.
+  - name: Floci
+    versions: "2.1 a 2.3"
+    note: Versões menores diferentes convivem; a padronizar.
+  - name: Keycloak
+    versions: "26.4 a 26.8"
+    note: Versões menores diferentes convivem; a padronizar.
