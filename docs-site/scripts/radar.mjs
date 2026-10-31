@@ -117,15 +117,16 @@ if (errors.length > 0) fail(`${source}: radar inválido\n${errors.map((e) => `  
 // --- geração ---------------------------------------------------------------
 
 // Texto do YAML numa célula de tabela MDX: o código entre crases fica como está;
-// fora dele, escapamos o que o MDX leria como JSX ou o que quebraria a tabela.
+// fora dele, escapamos a barra invertida, o que o MDX leria como JSX e o que quebraria a tabela.
 function cell(text) {
   return text
     .trim()
     .replace(/\s+/g, ' ')
     .split(/(`[^`]*`)/)
-    .map((part, i) => (i % 2 === 1 ? part : part.replace(/[{}<>]/g, (c) => `\\${c}`)))
-    .join('')
-    .replace(/\|/g, '\\|');
+    .map((part, i) =>
+      i % 2 === 1 ? part.replace(/\|/g, '\\|') : part.replace(/[\\{}<>|]/g, (c) => `\\${c}`),
+    )
+    .join('');
 }
 
 const byId = new Map(technologies.map((tech) => [tech.id, tech]));
