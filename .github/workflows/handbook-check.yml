@@ -1,0 +1,58 @@
+name: handbook-check
+
+# Reusable: the repository carries the handbook block in its AGENTS.md, and the block is the current one.
+#
+# Every repository of the org follows the engineering handbook (https://barte-ai-services.github.io/.github/), and
+# every AI working in it reads that from a managed block of its AGENTS.md, between the markers
+# `<!-- barte:handbook:start -->` and `<!-- barte:handbook:end -->`. The one source of the block is
+# agents/handbook-block.md in this repository; the Barte Forge copies it into each repository.
+#
+# The check fails when the file has no block, or when the block differs from the source. A stale block becomes a
+# red pull request, not an AI following an old rule. The fix is to copy the source block again (the Forge does it).
+#
+# Ativação no repo chamador (.github/workflows/ci.yml, as a job):
+#   handbook:
+#     uses: barte-ai-services/.github/.github/workflows/handbook-check.yml@main
+#     permissions:
+#       contents: read
+
+on:
+  workflow_call:
+    inputs:
+      file:
+        description: "The instruction file that carries the block."
+        type: string
+        default: AGENTS.md
+
+permissions:
+  contents: read
+
+jobs:
+  handbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ${{ inputs.file }}
+          sparse-checkout-cone-mode: false
+      - name: The block matches agents/handbook-block.md
+        env:
+          FILE: ${{ inputs.file }}
+          SOURCE: https://raw.githubusercontent.com/barte-ai-services/.github/main/agents/handbook-block.md
+        run: |
+          set -euo pipefail
+          curl -fsSL "$SOURCE" -o expected.md
+          if [ ! -f "$FILE" ]; then
+            echo "::error file=$FILE::$FILE does not exist. Copy agents/handbook-block.md from barte-ai-services/.github into it."
+            exit 1
+          fi
+          awk '/<!-- barte:handbook:start -->/{p=1} p{print} /<!-- barte:handbook:end -->/{p=0}' "$FILE" > actual.md
+          if [ ! -s actual.md ]; then
+            echo "::error file=$FILE::$FILE has no handbook block. Copy agents/handbook-block.md from barte-ai-services/.github into it."
+            exit 1
+          fi
+          if ! diff -u expected.md actual.md; then
+            echo "::error file=$FILE::The handbook block in $FILE is stale. Copy agents/handbook-block.md from barte-ai-services/.github over it."
+            exit 1
+          fi
+          echo "The handbook block in $FILE is current."

@@ -1,0 +1,64 @@
+name: ci
+
+# The pull request check of the engineering handbook (https://barte-ai-services.github.io/.github/how-we-work/pull-requests/).
+# The `ci` job is the one required check of main, and it runs on every pull request, with no paths filter: a
+# required check that a pull request never triggers leaves it waiting forever.
+#
+# Add the project's own build jobs to `needs` of the `ci` job.
+
+on:
+  pull_request:
+    branches: [$default-branch]
+  push:
+    branches: [$default-branch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tests:
+    uses: barte-ai-services/.github/.github/workflows/tests.yml@main
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+    with:
+      projects: "."
+
+  traceability:
+    if: github.event_name == 'pull_request'
+    uses: barte-ai-services/.github/.github/workflows/traceability.yml@main
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+
+  conventions:
+    if: github.event_name == 'pull_request'
+    uses: barte-ai-services/.github/.github/workflows/conventional-pr.yml@main
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      mode: block
+
+  handbook:
+    uses: barte-ai-services/.github/.github/workflows/handbook-check.yml@main
+    permissions:
+      contents: read
+
+  ci:
+    if: always()
+    needs: [tests, traceability, conventions, handbook]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || [ "$r" = skipped ] || exit 1; done

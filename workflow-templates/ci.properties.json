@@ -1,0 +1,6 @@
+{
+  "name": "ci (handbook da Barte)",
+  "description": "O check obrigatório do handbook: testes, rastreabilidade, Conventional Commits e o bloco do handbook no AGENTS.md, num job `ci`.",
+  "iconName": "check-circle",
+  "categories": ["Code quality"]
+}
