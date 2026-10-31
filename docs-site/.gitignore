@@ -17,6 +17,9 @@
 /lib/marca.generated.json
 /public/marca/
 
+# o Tech Radar: gerado de data/radar.yaml por scripts/radar.mjs
+/content/docs/specifications/tech-radar.mdx
+
 # documentos de trabalho: planos, handoffs, próximos passos. Nunca no git.
 /docs-trabalho/
 
