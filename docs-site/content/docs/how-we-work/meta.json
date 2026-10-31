@@ -3,5 +3,5 @@
   "description": "O caminho de uma mudança, da issue ao merge, e as regras que valem em todo projeto",
   "root": true,
   "icon": "Workflow",
-  "pages": ["index", "issues", "agency", "pull-requests", "review", "documentation", "security", "language", "agents", "adoption"]
+  "pages": ["index", "issues", "agency", "development-cycle", "repositories", "delivery", "pull-requests", "review", "documentation", "challenge-driven", "security", "language", "agents", "adoption"]
 }
