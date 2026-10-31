@@ -1,0 +1,7 @@
+{
+  "title": "Como trabalhamos",
+  "description": "O caminho de uma mudança, da issue ao merge, e as regras que valem em todo projeto",
+  "root": true,
+  "icon": "Workflow",
+  "pages": ["index", "issues", "agency", "pull-requests", "review", "documentation", "security", "language", "agents", "adoption"]
+}

@@ -1,0 +1,25 @@
+# A marca deste site, no formato do brand.yml do Shell: o mesmo arquivo serve aos dois.
+# Sem este arquivo vale `padrao`. Trocar a marca pede um build novo (o site é estático).
+
+brand:
+  # padrao  o Barte Design System puro
+  # custom  o design system mais o logo e os tokens do cliente
+  strategy: padrao
+
+  # O nome no topo e no título da aba.
+  name: Barte AI Services
+
+  # Só com `custom`. Os caminhos são relativos a este arquivo.
+  # Exemplo completo em exemplos/marca-custom/brand.yml.
+  #
+  # logo_file: ./logo.svg
+  # favicon_file: ./icone.svg
+  # tokens_file: ./marca.css
+  # tokens:
+  #   content-brand: "#0a6b4f"
+  #   bg-brand: "#0a6b4f"
+  #
+  # O que só vale no tema escuro. Uma cor de `tokens` vale nos dois temas.
+  #
+  # tokens_dark:
+  #   content-brand: "#4fd1a5"

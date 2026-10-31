@@ -1,0 +1,34 @@
+# deps
+/node_modules
+
+# generated content
+.source
+
+# test & build
+/coverage
+/.next/
+/out/
+/out-visoes/
+/build
+*.tsbuildinfo
+
+# a marca aplicada: gerada de brand.yml por scripts/marca.mjs
+/app/marca.generated.css
+/lib/marca.generated.json
+/public/marca/
+
+# documentos de trabalho: planos, handoffs, próximos passos. Nunca no git.
+/docs-trabalho/
+
+# misc
+.DS_Store
+*.pem
+/.pnp
+.pnp.js
+.env*.local
+.env
+
+# others
+.vercel
+next-env.d.ts
+
