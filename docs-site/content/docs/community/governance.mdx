@@ -1,0 +1,72 @@
+---
+title: Governança
+description: Os princípios que orientam a Barte AI Services e como as decisões ficam registradas
+---
+
+Esta página descreve como a **Barte AI Services** se organiza para decidir: os princípios que orientam o time, onde cada decisão fica registrada e como este handbook muda.
+
+## Princípios
+
+### Consenso e comprometimento
+
+Buscamos decisões de consenso entre as pessoas envolvidas, alinhando o objetivo do trabalho com o que o negócio e quem usa a plataforma precisam. Depois de decidido, o time se compromete com a decisão, mesmo quem defendeu outro caminho.
+
+### Transparência e responsabilidade
+
+A confiança vem da transparência. Diretrizes, decisões e a evolução da plataforma ficam escritas e acessíveis a todo o time, e cada pessoa sabe pelo que responde.
+
+### Inclusão e diversidade
+
+Valorizamos a diversidade de pensamento, experiência e perspectiva. Todas as vozes são ouvidas e consideradas antes de uma decisão.
+
+### Segurança e confiabilidade
+
+A integridade dos sistemas e a proteção dos dados vêm antes de qualquer meta. Cada componente nasce seguro e confiável; veja [Segurança](/community/security).
+
+### Eficiência e agilidade
+
+Somos pragmáticos. Preferimos o menor processo que resolve, para responder rápido às mudanças do mercado e às necessidades de quem usa a plataforma.
+
+## Como decidimos
+
+Qualquer pessoa do time pode propor uma ideia, levantar uma dúvida ou sugerir uma melhoria, e é incentivada a dar opinião e feedback construtivo sobre as propostas das outras. Sempre que possível, busca-se um acordo que considere todas as perspectivas, sem sacrificar a qualidade em nome da velocidade.
+
+Quando o consenso não vem, a decisão sobe para o time de liderança da Barte AI Services, que decide com base nestes princípios e no direcionamento da plataforma. A decisão final fica registrada como qualquer outra.
+
+## Onde as decisões ficam registradas
+
+### Decisões de arquitetura: ADRs
+
+Toda decisão técnica que alguém vai questionar depois vira um **Architecture Decision Record (ADR)**, guardado em `docs/adr/` no repositório que ela afeta. O ADR entra por pull request, como qualquer código.
+
+Cada ADR traz:
+
+- **Título:** o nome da decisão.
+- **Data:** quando a decisão foi tomada.
+- **Status:** proposto, aceito, rejeitado ou substituído (e, nesse caso, por qual).
+- **Contexto:** o problema ou a necessidade que levou à decisão.
+- **Decisão:** a escolha feita, com o detalhe necessário.
+- **Alternativas consideradas:** as outras opções e por que não foram escolhidas.
+- **Consequências:** os impactos positivos e negativos esperados.
+- **Prova de conceito (opcional):** quando a decisão se apoia em uma.
+
+Um ADR aceito não é editado para mudar de ideia: uma decisão nova vem em um ADR novo, que substitui o anterior, e os dois continuam legíveis.
+
+### Este handbook
+
+O handbook é a fonte das regras que valem em todos os projetos. Ele muda por **pull request** ao repositório `barte-ai-services/.github`, com a mesma revisão e o mesmo `ci` de qualquer outra mudança. Uma regra que não está escrita aqui, ou num ADR, ainda não é regra.
+
+## Resolução de conflitos
+
+- **Divergências técnicas** são resolvidas por quem está na mudança, buscando consenso e acolhendo perspectivas diferentes. Se não houver acordo, o tema sobe para a liderança, e o desfecho vira um ADR.
+- **Questões organizacionais** são tratadas pela liderança, com transparência, priorizando a segurança e a estabilidade da plataforma.
+
+Toda resolução fica documentada e é comunicada ao time.
+
+## Diretrizes complementares
+
+- [Código de Conduta](/community/code-of-conduct)
+- [Compliance by Design](/community/compliance)
+- [Segurança](/community/security)
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

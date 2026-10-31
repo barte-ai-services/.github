@@ -1,0 +1,108 @@
+---
+title: Contribuindo
+description: Commits pequenos, Conventional Commits, commits assinados e o idioma de cada coisa
+---
+
+Esta página reúne as práticas que valem para qualquer contribuição ao código da Barte AI Services: como fazer commits, como escrevê-los e em que idioma fica cada coisa.
+
+## O fluxo de uma mudança
+
+Trabalhamos em branches no próprio repositório da organização, sem forks. Toda mudança começa numa issue, passa pela agência da Ahrena, vira um pull request, recebe a revisão automatizada e entra por auto-merge quando o check `ci` fica verde. O caminho completo, com as regras de cada etapa, está em [Como trabalhamos](/how-we-work).
+
+Mantemos um bom histórico de decisões, por isso mesmo mudanças pequenas ficam associadas a uma issue. A única exceção são correções triviais, como um erro de digitação, que podem ir direto num pull request.
+
+## Commits pequenos
+
+Recomendamos fortemente a prática de *small commits*. Ela torna a revisão e a integração mais simples para todo mundo.
+
+- **Revisão mais fácil:** um commit pequeno se entende e se revisa em menos tempo.
+- **Menos risco:** quando algo dá errado, é mais simples achar e corrigir o problema.
+- **Histórico legível:** um histórico granular e bem descrito facilita a depuração e mostra como o código evoluiu.
+- **Menos conflito:** alterações menores geram menos conflitos de merge.
+- **Reversão segura:** dá para reverter uma mudança sem levar junto partes que não tinham nada a ver.
+
+Na prática:
+
+- **Um commit por mudança lógica.** Não misture alterações que não se relacionam.
+- **Commits atômicos.** Cada commit é uma unidade de trabalho que pode ser integrada sem depender de alterações futuras.
+- **Nada de commit gigante.** Se ficou grande, divida.
+- **Código funcionando.** Sempre que possível, cada commit compila e passa nos testes.
+
+## Mensagens de commit
+
+Usamos o formato [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), e o commitlint da organização confere cada mensagem.
+
+```text
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Os tipos aceitos são:
+
+| Tipo | Quando usar |
+| --- | --- |
+| `feat` | Uma funcionalidade nova (corresponde a `MINOR` no [versionamento semântico](https://semver.org/)) |
+| `fix` | A correção de um bug (corresponde a `PATCH`) |
+| `docs` | Só documentação |
+| `style` | Formatação, sem mudança de comportamento |
+| `refactor` | Mudança de código que não corrige bug nem adiciona funcionalidade |
+| `perf` | Melhoria de desempenho |
+| `test` | Testes novos ou corrigidos |
+| `build` | Sistema de build ou dependências |
+| `ci` | Configuração de integração contínua |
+| `chore` | Manutenção que não se encaixa nos tipos acima |
+| `revert` | A reversão de um commit anterior |
+
+E as regras do cabeçalho:
+
+- No máximo **100 caracteres**.
+- **Sem ponto final.**
+- O escopo é opcional e vai entre parênteses: `feat(parser): add support for arrays`.
+- Uma mudança que quebra compatibilidade leva `!` depois do tipo ou escopo, ou um rodapé `BREAKING CHANGE:` (corresponde a `MAJOR`). Ela pode aparecer em commits de qualquer tipo.
+- Outros rodapés seguem o [formato de trailer do Git](https://git-scm.com/docs/git-interpret-trailers), como `Closes #123`.
+
+Exemplo:
+
+```text
+feat(auth): add token refresh to the session client
+
+Refresh the access token before it expires and retry the request once
+when the server answers 401.
+
+Closes #123
+```
+
+## Commits assinados
+
+Recomendamos assinar commits e tags. A assinatura dá a quem lê o histórico confiança sobre a origem de cada alteração, e o GitHub marca o commit como **Verified** quando consegue conferi-la.
+
+| Status | O que significa |
+| --- | --- |
+| Verified | O commit foi assinado e a assinatura foi conferida. |
+| Partially verified | A assinatura foi conferida, mas o commit tem um autor diferente de quem fez o commit, e esse autor ligou o modo vigilante. A assinatura não garante o consentimento do autor. |
+| Unverified | O commit foi assinado mas a assinatura não pôde ser conferida, ou não foi assinado e alguém envolvido ligou o modo vigilante. |
+| Sem status | O commit não foi assinado. |
+
+Para configurar o Git, veja [Assinando commits](/community/signing-commits).
+
+## Idioma
+
+A regra é simples: **bastidores em inglês, tela em pt-BR**.
+
+- **Em inglês:** código, identificadores, nomes de arquivo e pasta, rotas e parâmetros de API, chaves de JSON, tabelas e colunas, variáveis de ambiente, nomes de teste e mensagens de commit.
+- **Em pt-BR:** o que a pessoa usuária vê, como textos de tela, rótulos e mensagens, além da documentação deste handbook.
+
+Issues e pull requests podem ser escritos em pt-BR.
+
+<Callout type="warn">
+  Usar qualquer idioma com a intenção de contornar o [Código de Conduta](/community/code-of-conduct) é, em si, uma violação dele.
+</Callout>
+
+## Código de Conduta
+
+Toda contribuição segue o [Código de Conduta](/community/code-of-conduct), para que o ambiente seja acolhedor e respeitoso com todas as pessoas.
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

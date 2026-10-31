@@ -1,0 +1,74 @@
+---
+title: Segurança
+description: Como relatar uma vulnerabilidade e os princípios de engenharia que vêm antes de qualquer meta
+---
+
+Levamos a segurança a sério e agradecemos relatos responsáveis. Esta página descreve como relatar uma vulnerabilidade, como a tratamos e os princípios de engenharia que seguimos.
+
+O código da Barte AI Services é software proprietário da **Barte Soluções de Pagamento LTDA**.
+
+## Relatando uma vulnerabilidade
+
+<Callout type="error" title="Nunca numa issue pública">
+  Não abra uma issue, um pull request ou uma discussão pública sobre uma vulnerabilidade. Um relato público expõe o problema antes que ele seja corrigido.
+</Callout>
+
+Use o **relato privado de vulnerabilidades do GitHub** no repositório afetado:
+
+<Steps>
+  <Step>
+    Abra a página do repositório afetado no GitHub.
+  </Step>
+  <Step>
+    Clique na aba **Security**.
+  </Step>
+  <Step>
+    Clique em **Report a vulnerability**.
+  </Step>
+  <Step>
+    Preencha o formulário com os detalhes do problema.
+  </Step>
+</Steps>
+
+Só quem mantém o repositório vê o relato, o que permite uma divulgação coordenada e rastreável. Veja mais em [Privately reporting a security vulnerability](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability).
+
+Inclua no relato:
+
+- Uma descrição clara da vulnerabilidade
+- Os passos para reproduzi-la
+- Os componentes ou versões afetados
+- O impacto potencial
+
+## Como tratamos um relato
+
+1. **Triagem e confirmação:** validamos o problema e avaliamos a gravidade, usando CVSS ou equivalente.
+2. **Plano de correção:** priorizamos e desenvolvemos uma correção ou mitigação.
+3. **Divulgação coordenada:** podemos pedir que a divulgação espere até a correção estar implantada.
+4. **Aviso:** quando cabe, publicamos um aviso depois da correção, com crédito a quem relatou, se a pessoa consentir.
+
+
+## Segurança antes de meta
+
+Nenhuma meta de prazo ou de escopo justifica abrir mão destes princípios:
+
+- **Nenhuma porta pública.**
+- **Integrações só de saída.** Nossos sistemas iniciam a conexão com os serviços de que dependem.
+- **Executores efêmeros, com o menor raio de dano.** Um executor existe para uma tarefa, termina com ela e só alcança o que essa tarefa exige.
+- **Escopo mínimo de acesso nas contas de produção.** Cada identidade tem só as permissões de que precisa, e nenhuma além.
+- **Abrir mais acesso exige um ADR.** Qualquer exceção a estes princípios é uma decisão registrada, com contexto e consequências, como descrito em [Governança](/community/governance).
+
+## Desenvolvimento seguro
+
+Além disso, seguimos as práticas de desenvolvimento seguro da indústria:
+
+- Commits assinados (veja [Assinando commits](/community/signing-commits))
+- Revisão de código com foco em design seguro
+- Pipelines de CI com varredura automatizada de vulnerabilidades
+- Princípio do menor privilégio em ambientes de nuvem e de execução
+- Monitoramento contínuo de dependências
+
+## Divulgação responsável
+
+Agradecemos todo esforço para melhorar nossa postura de segurança. Por favor, não divulgue publicamente uma vulnerabilidade antes que tenhamos a chance de fazer a triagem e responder. Estamos comprometidos com uma colaboração transparente e respeitosa com quem pesquisa segurança.
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

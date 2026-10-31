@@ -1,0 +1,164 @@
+---
+title: Assinando commits
+description: Como configurar o Git para assinar commits e tags com uma chave SSH ou GPG
+---
+
+Assinar commits garante a autenticidade e a integridade de cada alteração: quem lê o histórico sabe que o commit veio de quem diz que o fez. Quando o GitHub consegue conferir a assinatura, o commit aparece como **Verified**.
+
+O Git assina com uma chave **SSH** ou **GPG**. A SSH é o caminho mais simples, porque você provavelmente já tem uma; a GPG continua valendo para quem já a usa.
+
+## Configurando a assinatura
+
+<Tabs items={['SSH', 'GPG']}>
+  <Tab value="SSH">
+    **1. Tenha uma chave SSH.** Se ainda não tiver, gere uma:
+
+    ```bash
+    ssh-keygen -t ed25519 -C "your_email@example.com"
+    ```
+
+    **2. Diga ao Git para assinar com SSH** e qual chave pública usar:
+
+    ```bash
+    git config --global gpg.format ssh
+    git config --global user.signingkey ~/.ssh/id_ed25519.pub
+    ```
+
+    **3. Assine todos os commits e tags por padrão:**
+
+    ```bash
+    git config --global commit.gpgsign true
+    git config --global tag.gpgSign true
+    ```
+
+    **4. Cadastre a chave no GitHub como chave de assinatura.** Em **Settings → SSH and GPG keys → New SSH key**, escolha o tipo **Signing Key** e cole o conteúdo de `~/.ssh/id_ed25519.pub`. Uma chave cadastrada só como chave de autenticação não serve para conferir assinaturas.
+
+    Veja mais em [Telling Git about your SSH key](https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key#telling-git-about-your-ssh-key).
+
+    <Callout type="info">
+      Para o Git conferir assinaturas SSH localmente (por exemplo, em `git log --show-signature`), configure um arquivo de assinantes permitidos com `gpg.ssh.allowedSignersFile`.
+    </Callout>
+  </Tab>
+  <Tab value="GPG">
+    **1. Gere uma chave GPG:**
+
+    ```bash
+    gpg --full-generate-key
+    ```
+
+    **2. Encontre o ID da chave:**
+
+    ```bash
+    gpg --list-secret-keys --keyid-format=long
+    ```
+
+    O ID é o valor depois de `sec   ed25519/` (ou `rsa4096/`) na saída.
+
+    **3. Exporte a chave pública** e copie o bloco inteiro, de `-----BEGIN PGP PUBLIC KEY BLOCK-----` até `-----END PGP PUBLIC KEY BLOCK-----`:
+
+    ```bash
+    gpg --armor --export <key-id>
+    ```
+
+    **4. Cadastre a chave no GitHub** em **Settings → SSH and GPG keys → New GPG key**. Veja [Adding a GPG key to your GitHub account](https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account).
+
+    **5. Diga ao Git qual chave usar.** Se você configurou antes outro formato de assinatura, remova-o para voltar ao padrão `openpgp`:
+
+    ```bash
+    git config --global --unset gpg.format
+    git config --global user.signingkey <key-id>
+    ```
+
+    **6. Assine todos os commits e tags por padrão:**
+
+    ```bash
+    git config --global commit.gpgsign true
+    git config --global tag.gpgSign true
+    ```
+
+    **E-mail da chave.** O e-mail da chave precisa ser um e-mail verificado na sua conta do GitHub e o mesmo do commit. Para adicionar um e-mail a uma chave existente:
+
+    ```bash
+    gpg --edit-key <key-id>
+    gpg> adduid
+    gpg> save
+    ```
+
+    Para manter seu e-mail privado, use o endereço no-reply fornecido pelo GitHub. Veja [Setting your commit email address](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address).
+  </Tab>
+</Tabs>
+
+## Assinando um commit novo
+
+Com `commit.gpgsign` ligado, todo commit sai assinado. Sem ele, assine um commit específico com `-S`:
+
+```bash
+git commit -S -m "docs: describe the signing setup"
+```
+
+## Assinando um commit antigo
+
+<Steps>
+  <Step>
+    ### Encontre o commit
+
+    ```bash
+    git log --oneline
+    ```
+
+    Localize o commit que quer assinar.
+  </Step>
+  <Step>
+    ### Inicie um rebase interativo
+
+    Se o commit está, por exemplo, três commits atrás:
+
+    ```bash
+    git rebase -i HEAD~3
+    ```
+  </Step>
+  <Step>
+    ### Marque o commit para edição
+
+    No editor, troque `pick` por `edit` na linha do commit, salve e feche:
+
+    ```text
+    edit abc1234 Commit message
+    pick def5678 Another commit
+    pick ghi9101 Yet another commit
+    ```
+  </Step>
+  <Step>
+    ### Assine o commit
+
+    ```bash
+    git commit --amend --no-edit -S
+    ```
+  </Step>
+  <Step>
+    ### Continue o rebase
+
+    ```bash
+    git rebase --continue
+    ```
+
+    Se houver mais commits para assinar, repita os dois últimos passos.
+  </Step>
+  <Step>
+    ### Atualize o remoto, se necessário
+
+    Se o commit já estava no remoto, o histórico mudou e o push precisa forçar:
+
+    ```bash
+    git push --force-with-lease
+    ```
+
+    `--force-with-lease` é mais seguro que `--force`: ele recusa o push se alguém tiver enviado alterações que você ainda não tem.
+  </Step>
+</Steps>
+
+<Callout type="info">
+  Para assinar de uma vez todos os commits de uma branch, use `git rebase --exec 'git commit --amend --no-edit -S' main` a partir dela.
+</Callout>
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

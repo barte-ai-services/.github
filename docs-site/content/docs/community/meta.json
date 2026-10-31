@@ -1,0 +1,7 @@
+{
+  "title": "Comunidade",
+  "description": "Como contribuir, conduta, governança, compliance e segurança",
+  "root": true,
+  "icon": "Users",
+  "pages": ["index", "contributing", "code-of-conduct", "governance", "compliance", "security", "signing-commits"]
+}
