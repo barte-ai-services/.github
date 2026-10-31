@@ -1,0 +1,4 @@
+/node_modules
+/dist
+# the handbook content, bundled from ../docs-site and ../agents by scripts/content.mjs
+/src/generated/
