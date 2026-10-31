@@ -1,21 +1,19 @@
-# A documentação do Backstage
+# O site do handbook de engenharia
 
-O site de documentação do Backstage, feito com a casca [docs-template](https://github.com/barte-ai-services/docs-template): Fumadocs estático, com três abas (Executivo, Operação e Técnico) e a marca padrão da Barte. O README da casca explica a marca, os componentes e os rascunhos.
+O handbook de engenharia da Barte, publicado em <https://barte-ai-services.github.io/.github/>. É a casca [docs-template](https://github.com/barte-ai-services/docs-template) da Barte: Fumadocs estático, com três abas (Como trabalhamos, Especificações e Comunidade) e a marca padrão.
 
 ```bash
 npm ci
-npm run dev     # http://localhost:3000, com os rascunhos
-npm run build   # out/, sem os rascunhos, e confere os links
+npm run dev                          # http://localhost:3000
+BASE_PATH=/.github npm run build     # out/, como no GitHub Pages, e confere os links
 ```
 
-## As decisões vêm de docs/adr
-
-O `scripts/decisoes.mjs` roda antes do `dev` e do `build` e gera a seção Técnico › Decisões a partir de `../docs/adr/*.md`. A pasta gerada, `content/docs/tecnico/decisoes/`, fica fora do git: o texto de um ADR mora só em `docs/adr/`. No caminho, os nomes de código dos módulos viram os nomes comerciais, e os links entre ADRs viram links entre as páginas.
+O conteúdo fica em `content/docs/`, uma pasta por aba. Os nomes de arquivo e de pasta são em inglês, porque viram URL; o texto é em pt-BR.
 
 ## Publicação
 
-O workflow `pages` publica o site no GitHub Pages privado a cada merge na `main`: só quem tem acesso ao repositório o vê. Nas pull requests, o job `docs-site` do check `ci` faz o build e confere os links.
+O workflow `docs-site` faz o build em todo pull request e publica no GitHub Pages a cada merge na `main`. O site é público, como o repositório: nada interno entra aqui.
 
-## Rascunhos
+## Licença
 
-Uma página com `rascunho: true` aparece no `npm run dev` e fica fora do build. As páginas do esqueleto que ainda não têm fonte continuam assim.
+As abas Especificações e Comunidade são adaptadas do Guardia Developer Hub, sob Apache-2.0. Veja o `NOTICE` na raiz.

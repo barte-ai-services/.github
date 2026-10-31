@@ -50,7 +50,7 @@ const config: DocsConfig = {
   inicioProjeto: '2026-10-31',
   visoes: {
     // Uma visão só: o site é público, como o repositório, e todos veem as três abas.
-    completa: { abas: ['how-we-work'], papeis: [] },
+    completa: { abas: ['how-we-work', 'specifications', 'community'], papeis: [] },
   },
 };
 
