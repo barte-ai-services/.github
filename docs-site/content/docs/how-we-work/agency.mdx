@@ -1,0 +1,43 @@
+---
+title: A agência do Ahrena
+description: O caminho padrão de construção, da issue a uma pilha de pull requests revisados.
+---
+
+A construção na Barte passa pela agência do [Ahrena Framework](https://github.com/ahrenatechnology/ahrena-framework). Uma issue entra, e saem pull requests empilhados, cada um revisado antes de abrir.
+
+## Quem faz o quê
+
+| Agente | Papel |
+|---|---|
+| **Athena** | Coordena a entrega: planeja a issue em camadas, roteia cada uma para o construtor certo, empilha os PRs e escala quando o ciclo se esgota |
+| **Iris** | Constrói frontend de fora para dentro: wireframe, componentes, estado, contrato |
+| **Apollo** | Constrói backend de dentro para fora: domínio, casos de uso, persistência, API |
+| **Clio** | Constrói dados da fonte ao produto: contrato, medalhão, expectativas, marts |
+| **Janus** | Aplica as disciplinas de segurança dentro do ciclo, antes de cada camada abrir |
+| **Argos** | Revisa o PR e publica o parecer |
+| **Erodos** | Aplica as correções que a review apontou e devolve o PR para outra rodada |
+
+Os agentes orquestram e revisam; quem escreve o código de cada camada são os especialistas que eles chamam, sempre com o teste primeiro.
+
+## Os dois gates
+
+O Ahrena tem dois gates, e a Barte os mantém:
+
+1. **Uma pessoa pede que a issue seja trabalhada.** Os critérios dela são o que essa pessoa aprovou.
+2. **O quality gate.** Todo check roda e passa, com a saída à vista, antes de pedir review. Localmente, é a skill `running-the-quality-gate`; no pull request, é o próprio `ci`.
+
+## O quality gate dentro do `ci`
+
+O `ci` de cada repositório chama os workflows reutilizáveis da organização, e eles são o gate:
+
+| Job | O que confere |
+|---|---|
+| `tests` | Os tipos de teste que o Ahrena pede de cada camada (unit, integration, acceptance, contract, workbench, quality), cada um um alvo do `Makefile` do projeto |
+| `traceability` | Critérios de aceite e testes, nos dois sentidos |
+| `conventional-pr` | O título e os commits em Conventional Commits |
+
+Um projeto que ainda não implementou um tipo de teste responde «nada a testar», e a parte fica verde.
+
+## Como o Ahrena chega ao projeto
+
+O projeto instala o **Barte Forge**, e o Forge garante o Ahrena com o conjunto de plugins que a Barte usa. O `AGENTS.md` do projeto recebe dois blocos gerenciados: o do Ahrena e o [deste handbook](/how-we-work/agents).

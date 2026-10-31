@@ -1,0 +1,30 @@
+---
+title: Como as IAs seguem o handbook
+description: Cada repositório carrega no AGENTS.md um bloco gerenciado que aponta para o handbook, e o ci confere que ele está em dia.
+---
+
+Toda IA que trabalha num repositório da Barte segue este handbook. O mecanismo tem três peças, e nenhuma delas duplica o texto do handbook.
+
+## 1. O bloco no `AGENTS.md`
+
+Cada repositório tem no `AGENTS.md` um bloco gerenciado, entre os marcadores `<!-- barte:handbook:start -->` e `<!-- barte:handbook:end -->`. Ele diz que o repositório segue o handbook, que o handbook vence em conflito, exceto por um ADR do próprio repositório, e resume as regras em uma linha cada.
+
+A fonte única do bloco é o arquivo [`agents/handbook-block.md`](https://github.com/barte-ai-services/.github/blob/main/agents/handbook-block.md) do repositório `.github`. Ninguém edita o bloco à mão no projeto: ele é copiado dali.
+
+O `CLAUDE.md` do repositório importa o `AGENTS.md` (`@AGENTS.md`), e assim o Claude Code, o Codex, o Cursor e qualquer agente que lê o `AGENTS.md` recebem o mesmo bloco.
+
+## 2. O Forge instala
+
+O **Barte Forge** instala o bloco ao instalar o Ahrena no projeto, e o reescreve quando a fonte muda. O bloco do Ahrena e o do handbook ficam lado a lado, cada um com os seus marcadores, e o texto do projeto fica fora dos dois.
+
+## 3. O `ci` confere
+
+O job `handbook-check`, um workflow reutilizável do `.github`, falha o `ci` quando o bloco falta no `AGENTS.md` ou difere da fonte. Um bloco desatualizado vira um PR vermelho, e não uma IA seguindo uma regra velha.
+
+## O que fica onde
+
+| Onde | O quê |
+|---|---|
+| `barte-ai-services/.github` | O handbook, a fonte do bloco, os arquivos de comunidade, os issue forms e o modelo de PR, os labels, os workflows reutilizáveis e os modelos de workflow |
+| Barte Forge | A instalação no projeto: o Ahrena e os plugins da Barte, o bloco do handbook no `AGENTS.md` e os workflows que chamam os reutilizáveis |
+| Configuração da organização | O ruleset de cada repositório (o `ci` como check obrigatório) e o auto-merge ligado |
