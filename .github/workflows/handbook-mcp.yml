@@ -1,0 +1,99 @@
+name: handbook-mcp
+
+# The handbook MCP server (mcp/): checked on every pull request, deployed on every merge to main.
+#
+# The server answers from the handbook content bundled at build time, so a merge that changes the content
+# (docs-site/content, docs-site/data, agents/) deploys it again, and the MCP never lags the site.
+#
+# The function, its API and the deploy role live in barte-ai-services/infra (control-plane/handbook-mcp). This
+# workflow only replaces the function's code, with a role that GitHub's OIDC grants to this repository's main
+# and that can do nothing else. Until infra sets the two repository variables below, the deploy is skipped
+# with a notice.
+#
+#   BARTE_HANDBOOK_MCP_DEPLOY_ROLE_ARN   the role barte-handbook-mcp-deploy
+#   BARTE_HANDBOOK_MCP_URL               the mcp_url output of the root, for the smoke test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: handbook-mcp-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FUNCTION_NAME: barte-handbook-mcp
+  AWS_REGION: us-east-1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: cd dist && zip -q handler.zip handler.mjs
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: handbook-mcp
+          path: mcp/dist/handler.zip
+          retention-days: 7
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Waits for the infra
+        id: ready
+        env:
+          ROLE: ${{ vars.BARTE_HANDBOOK_MCP_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE" ]; then
+            echo "::notice::BARTE_HANDBOOK_MCP_DEPLOY_ROLE_ARN is not set: the function is not in the account yet (infra, control-plane/handbook-mcp). Nothing deployed."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ready.outputs.ready == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: handbook-mcp
+      - if: steps.ready.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.BARTE_HANDBOOK_MCP_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - if: steps.ready.outputs.ready == 'true'
+        name: Replaces the function's code
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --zip-file fileb://handler.zip --output text --query CodeSha256
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
+      - if: steps.ready.outputs.ready == 'true' && vars.BARTE_HANDBOOK_MCP_URL != ''
+        name: The deployed server answers with this commit
+        env:
+          URL: ${{ vars.BARTE_HANDBOOK_MCP_URL }}
+        run: |
+          body='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_rules","arguments":{}}}'
+          response=$(curl -fsS -X POST "$URL" -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' -d "$body")
+          echo "$response" | head -c 400; echo
+          echo "$response" | grep -q "$GITHUB_SHA"
