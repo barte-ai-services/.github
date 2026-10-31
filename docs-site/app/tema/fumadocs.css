@@ -1,0 +1,84 @@
+/*
+ * O FUMADOCS VESTIDO COM O BARTE DESIGN SYSTEM.
+ *
+ * Cada cor do Fumadocs lê um token do DS. Os tokens trocam no tema escuro e na
+ * marca do cliente (brand.yml), e o site inteiro troca junto: nada aqui muda.
+ *
+ * Regras da marca Barte aplicadas:
+ * - fundo `--bg-primary`, texto e ação em preto (`--content-primary`);
+ * - o rosa da marca (`--content-brand`) é acento: link, filete do item ativo,
+ *   aba ativa, foco. Nunca fundo de item ativo;
+ * - item ativo da barra lateral com fundo `--bg-tertiary`.
+ */
+
+@theme {
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-fd-background: var(--bg-primary);
+  --color-fd-foreground: var(--content-primary);
+  --color-fd-muted: var(--bg-secondary);
+  --color-fd-muted-foreground: var(--content-tertiary);
+  --color-fd-popover: var(--bg-primary);
+  --color-fd-popover-foreground: var(--content-primary);
+  --color-fd-card: var(--bg-secondary);
+  --color-fd-card-foreground: var(--content-primary);
+  --color-fd-border: var(--stroke-primary);
+  --color-fd-primary: var(--content-primary);
+  --color-fd-primary-foreground: var(--bg-primary);
+  --color-fd-secondary: var(--bg-tertiary);
+  --color-fd-secondary-foreground: var(--content-primary);
+  --color-fd-accent: var(--bg-tertiary);
+  --color-fd-accent-foreground: var(--content-primary);
+  --color-fd-ring: var(--stroke-brand);
+  --color-fd-overlay: rgb(0 0 0 / 0.35);
+}
+
+@theme static {
+  --color-fd-info: var(--accent-blue);
+  --color-fd-warning: var(--accent-orange);
+  --color-fd-error: var(--accent-red);
+  --color-fd-success: var(--accent-green);
+  --color-fd-idea: var(--accent-purple);
+  --color-fd-diff-remove: color-mix(in srgb, var(--accent-red) 12%, transparent);
+  --color-fd-diff-remove-symbol: var(--accent-red);
+  --color-fd-diff-add: color-mix(in srgb, var(--accent-green) 12%, transparent);
+  --color-fd-diff-add-symbol: var(--accent-green);
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--content-primary);
+}
+
+::selection {
+  background: var(--bg-brand-light);
+}
+
+:focus-visible {
+  outline-color: var(--stroke-brand);
+}
+
+/* O link no texto leva o acento da marca no sublinhado. */
+.prose :where(a):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+  text-decoration-color: var(--content-brand);
+}
+
+.prose :where(a):not(:where([class~='not-prose'], [class~='not-prose'] *)):hover {
+  color: var(--content-brand);
+}
+
+/*
+ * O item ativo da barra lateral: fundo `--bg-tertiary` (nunca rosa) e o filete
+ * na cor de acento da marca. O Fumadocs marca o item com `data-active` e o pinta
+ * por classe utilitária; o seletor casa pela classe, como o Shell faz com o DS.
+ */
+a[data-active='true'][class*='data-[active=true]:bg-fd-primary'] {
+  background-color: var(--bg-tertiary);
+  color: var(--content-primary);
+  font-weight: 500;
+}
+
+a[data-active='true'][class*='data-[active=true]:before:bg-fd-primary']::before {
+  width: 2px;
+  background-color: var(--content-brand);
+}

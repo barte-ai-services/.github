@@ -1,0 +1,46 @@
+{
+  "name": "barte-engineering-handbook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "marca": "node scripts/marca.mjs",
+    "predev": "node scripts/marca.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/marca.mjs",
+    "build": "next build",
+    "postbuild": "node scripts/conferir-links.mjs out",
+    "build:visoes": "node scripts/build-visoes.mjs",
+    "demo": "node scripts/demo-visoes.mjs",
+    "start": "serve out",
+    "novo-report": "node scripts/novo-report.mjs",
+    "nova-entrega": "node scripts/nova-entrega.mjs",
+    "types:check": "node scripts/marca.mjs && next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "barte-design-tokens": "^1.0.14",
+    "fumadocs-core": "16.16.2",
+    "fumadocs-mdx": "15.4.6",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@16.16.2",
+    "lucide-react": "^1.50.0",
+    "mermaid": "^12.2.0",
+    "next": "16.3.8",
+    "next-themes": "^0.4.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.28",
+    "serve": "^14.2.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

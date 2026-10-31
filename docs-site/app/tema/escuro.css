@@ -1,0 +1,62 @@
+/*
+ * O TEMA ESCURO do Barte Design System.
+ *
+ * O design system só declara o tema claro. Estes são os valores do escuro que o
+ * Shell usa, copiados de barte-ai-services/shell, packages/kit/src/frame.css
+ * (commit 17ee87f, 2026-10-06). Sai daqui no dia em que o DS trouxer o tema dele.
+ *
+ * O seletor é o do Shell. O next-themes grava `data-theme` junto com a classe
+ * `.dark` do Fumadocs (components/provider.tsx): o mesmo `brand.yml` vale nos dois.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-brand: #df285d;
+  --bg-brand-light: #45121f;
+  --bg-primary: #171717;
+  --bg-secondary: #0e0e0e;
+  --bg-tertiary: #262626;
+  --bg-disabled: #404040;
+
+  --content-brand: #f2668a;
+  --content-primary: #f5f5f5;
+  --content-secondary: #d4d4d4;
+  --content-tertiary: #a3a3a3;
+  --content-inverse: #171717;
+  --content-disabled: #737373;
+
+  --stroke-brand: #df285d;
+  --stroke-primary: #2a2a2a;
+  --stroke-secondary: #404040;
+  --stroke-tertiary: #737373;
+  --stroke-inverse: #fefefe;
+  --stroke-disabled: #2a2a2a;
+
+  --actions-bg-brand: #df285d;
+  --actions-bg-hover: #e8497a;
+  --actions-bg-pressed: #ce1b4f;
+  --actions-bg-light: #45121f;
+  --actions-bg-disabled: #2a2a2a;
+
+  --accent-green-light: #0f2e25;
+  --accent-green: #2fbf90;
+  --accent-green-dark: #5fd9b0;
+  --accent-orange-light: #3a2910;
+  --accent-orange: #ec9732;
+  --accent-orange-dark: #f4b769;
+  --accent-red-light: #3b1616;
+  --accent-red: #e25c5c;
+  --accent-red-dark: #f09090;
+  --accent-blue-light: #0b2c39;
+  --accent-blue: #2bb8ee;
+  --accent-blue-dark: #74d1f5;
+  --accent-yellow-light: #3a2e0e;
+  --accent-yellow: #efa020;
+  --accent-yellow-dark: #f6c66d;
+  --accent-purple-light: #241a3f;
+  --accent-purple: #9468ea;
+  --accent-purple-dark: #b79bf2;
+  --accent-grey-light: #262626;
+  --accent-grey: #d4d4d4;
+  --accent-grey-dark: #f5f5f5;
+}

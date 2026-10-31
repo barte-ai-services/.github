@@ -1,0 +1,41 @@
+---
+title: Issues
+description: Toda mudança nasce numa issue com critérios de aceite numerados, aberta pelos issue forms da organização.
+---
+
+Nenhuma mudança começa sem uma issue. Quem encontra trabalho sem issue abre uma antes do pull request.
+
+## O que uma issue carrega
+
+- **O que está errado ou faltando**, com a evidência.
+- **Como fica o pronto**: os critérios de aceite, numerados sem buraco (`AC-1`, `AC-2`, ...), sob o título «Critérios de aceite» ou «Acceptance criteria».
+- **O que fica para outras issues.**
+
+## Os issue forms
+
+Os formulários de issue são os do [Ahrena Framework](https://github.com/ahrenatechnology/ahrena-framework), como estão no framework:
+
+| Formulário | Para quê |
+|---|---|
+| Initiative | Um objetivo grande, que se divide em epics |
+| Epic | Uma entrega que se divide em histórias e tarefas |
+| User story for API | Um comportamento novo de API, com os cenários em Given/When/Then |
+| User story for frontend | Um comportamento novo de tela, com os cenários em Given/When/Then |
+| Tech task | Trabalho técnico sem comportamento novo para quem usa |
+| Bug | Algo que não se comporta como deveria |
+| Spike | Uma pergunta a responder antes de decidir |
+| Plan | A ordem de um conjunto de issues |
+
+O repositório `.github` publica esses formulários como padrão da organização: um repositório que não tem `.github/ISSUE_TEMPLATE/` próprio usa estes. Eles ficam em inglês, como no framework, para não virarem uma cópia que fica para trás. É a exceção escrita à regra de [pt-BR na tela](/how-we-work/language).
+
+O tipo da issue é o Issue Type nativo do GitHub, e não um label.
+
+## Rastreabilidade
+
+Cada critério de aceite tem um teste que o nomeia, com o token `#<issue>/AC-<n>`. O check `traceability` confere os dois sentidos no pull request:
+
+1. toda issue que o PR fecha lista os critérios, numerados sem buraco;
+2. todo critério vivo dessas issues é nomeado por um teste;
+3. todo critério que um teste alterado nomeia existe.
+
+Um PR que não fecha issue não tem o que rastrear, e o check fica verde.

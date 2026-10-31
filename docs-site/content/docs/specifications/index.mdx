@@ -1,0 +1,26 @@
+---
+title: Especificações
+description: Os padrões que toda API, erro, evento e entidade da Barte segue
+---
+
+Estas especificações descrevem como os sistemas da Barte se comunicam: o formato das APIs RESTful, a representação de erros, a autenticação, a idempotência, os eventos e a estrutura mínima de toda entidade. Elas valem para APIs públicas e internas, para a comunicação entre serviços e para as integrações com parceiros.
+
+O texto normativo usa as palavras-chave da [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119), escritas em maiúsculas e em português:
+
+| Palavra-chave | Equivale a | Significado |
+|---------------|------------|-------------|
+| **DEVE** | MUST | Requisito obrigatório. |
+| **NÃO DEVE** | MUST NOT | Proibição absoluta. |
+| **PODE** | MAY | Comportamento opcional, a critério de quem implementa. |
+
+| Especificação | O que cobre |
+|---------------|-------------|
+| [RESTful](/specifications/restful) | Status codes, payloads de resposta, paginação, ordenação e headers. |
+| [Tratamento de erros](/specifications/error-handling) | A estrutura de `errors` e os erros conhecidos. |
+| [Autenticação e autorização](/specifications/auth) | O modelo AAA e os fluxos OAuth 2.0. |
+| [Idempotência](/specifications/idempotency) | Como repetir uma operação sem efeito colateral, em APIs e eventos. |
+| [CloudEvents](/specifications/cloud-events) | O formato dos eventos publicados. |
+| [Entidades](/specifications/entities) | A estrutura base de todo objeto persistente. |
+| [Glossário](/specifications/glossary) | Os termos usados nas especificações. |
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

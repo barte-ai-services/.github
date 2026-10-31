@@ -1,0 +1,31 @@
+---
+title: Documentação
+description: A documentação nunca fica defasada. Um subagent documenta ao lado de quem coordena, e o PR leva a documentação da mudança.
+---
+
+## Um subagent de documentação em todo trabalho
+
+A sessão que coordena um trabalho de desenvolvimento, seja uma issue, um PR ou uma decisão, abre desde o começo um subagent que documenta ao lado dela. O subagent escreve enquanto o trabalho acontece, e não depois.
+
+## O padrão
+
+- **O site do projeto** fica em `docs-site/`, feito com a casca `docs-template` da Barte: Fumadocs estático, com abas por público e a marca padrão. Este handbook usa a mesma casca.
+- **As decisões** ficam em `docs/adr/`, uma por arquivo, numeradas. O site gera a seção de decisões a partir delas, e o texto de um ADR mora só ali.
+
+## O PR leva a documentação dele
+
+Uma mudança de comportamento, de tela, de arquitetura, de acesso ou de decisão que não aparece no site é trabalho incompleto. Nas abas do site do projeto:
+
+| Aba | O que cobre |
+|---|---|
+| Técnico | Arquitetura, decisões, provisionamento e acesso |
+| Operação | As telas e as jornadas |
+| Executivo | Os marcos e o status |
+
+## Quando escrever um ADR
+
+Uma decisão que alguém vai questionar depois vira um ADR. Uma alternativa rejeitada que volta a ser proposta também. Um ADR que substitui outro diz qual, e os dois continuam legíveis.
+
+## Os nomes na tela
+
+No site e nas telas aparecem só os nomes comerciais dos módulos da plataforma. Os nomes de código ficam no código.

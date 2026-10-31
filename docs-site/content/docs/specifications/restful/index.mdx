@@ -1,0 +1,24 @@
+---
+title: RESTful APIs
+description: As diretrizes para construir, consumir e documentar as APIs RESTful da Barte
+---
+
+Esta especificação consolida as diretrizes para construção, consumo e documentação de APIs RESTful na plataforma Barte. Seu objetivo é garantir padronização nas respostas e comportamentos, promovendo interoperabilidade, rastreabilidade e clareza para consumidores internos e externos.
+
+As APIs REST da Barte seguem os padrões definidos pelas RFCs oficiais do protocolo HTTP, com ajustes necessários para resolução de possíveis ambiguidades e aderência aos princípios de [Compliance by Design](/community/compliance).
+
+A especificação RESTful está estruturada em módulos reutilizáveis e versionáveis, que cobrem os seguintes aspectos:
+
+| Tema | Descrição |
+|------|-----------|
+| [Status Codes](/specifications/restful/status-codes) | Lista dos status HTTP permitidos e regras de uso. |
+| [Payloads de Resposta](/specifications/restful/response-payloads) | Formato unificado de respostas para sucesso e erro. |
+| [Paginação](/specifications/restful/pagination) | Estrutura padrão para navegação entre recursos paginados. |
+| [Ordenação](/specifications/restful/sorting) | Regras para uso de parâmetros `order_by` e `sort`. |
+| [Headers](/specifications/restful/headers) | Headers padrão e customizados utilizados nas APIs. |
+
+<Callout type="warn" title="Importante">
+Todas as regras aqui descritas DEVEM ser aplicadas a qualquer endpoint HTTP implementado na plataforma, salvo exceções justificadas e documentadas em ADR.
+</Callout>
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

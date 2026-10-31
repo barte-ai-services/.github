@@ -1,0 +1,4 @@
+# A imagem só leva deploy/ e out-visoes/.
+*
+!deploy/
+!out-visoes/

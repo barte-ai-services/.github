@@ -1,0 +1,22 @@
+---
+title: Segurança antes de meta
+description: Menor exposição e menor raio de dano valem sobre qualquer meta ou conveniência.
+---
+
+Segurança vem antes de meta, de prazo e de conveniência. Quando uma meta pede mais acesso, quem cede é a meta.
+
+## Os princípios
+
+- **Nenhuma porta pública.** Um serviço da plataforma não se expõe à internet. Quem precisa chegar a ele chega por um caminho autenticado e privado.
+- **Integrações só de saída.** A plataforma busca o que precisa nos sistemas de fora. Um sistema de fora não abre conexão para dentro dela.
+- **Executores efêmeros, com o menor raio de dano.** Cada execução roda isolada, com credenciais de vida curta e acesso só ao que aquela execução precisa. Uma execução comprometida não alcança as outras.
+- **Escopo mínimo em produção.** Uma conta de produção tem só as permissões que o trabalho dela exige, e nada é concedido «por via das dúvidas».
+- **Nenhum segredo no código.** Segredos vivem no cofre de segredos do ambiente, nunca no repositório, num log ou num PR.
+
+## Abrir mais acesso pede um ADR
+
+Um trabalho que precisa de mais exposição ou de mais permissão do que estes princípios permitem pede um ADR novo no repositório, com o motivo e o raio de dano. Sem o ADR, a resposta é não.
+
+## Reportar uma vulnerabilidade
+
+Nunca numa issue pública. O caminho está em [segurança na comunidade](/community/security).

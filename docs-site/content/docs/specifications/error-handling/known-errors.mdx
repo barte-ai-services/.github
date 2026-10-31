@@ -1,0 +1,110 @@
+---
+title: Erros conhecidos
+description: Os códigos e motivos de erro padronizados e o tratamento esperado
+---
+
+Este documento lista os erros padronizados utilizados na plataforma Barte. Cada erro é descrito por seu código único e será detalhado com seu(s) motivo(s) e tratamento esperado futuramente.
+
+<Callout type="warn" title="Importante">
+Todos os erros DEVEM seguir a estrutura definida em [Tratamento de Erros](/specifications/error-handling).
+</Callout>
+
+## ERR400_MISSING_OR_MALFORMED_HEADER
+
+### `IDEMPOTENCY_KEY_REQUIRED`
+- **Mensagem**: O recurso solicitado exige o envio de um `Idempotency-Key` válido.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Assegurar que o header `Idempotency-Key` seja enviado e corretamente formatado conforme a [especificação de idempotência](/specifications/restful/headers#idempotency-key).
+
+---
+
+### `MALFORMED_CORRELATION_ID`
+- **Mensagem**: O header `X-Barte-Correlation-Id` não está corretamente formatado.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Assegurar que o header `X-Barte-Correlation-Id` seja enviado e corretamente formatado conforme a [especificação de correlação](/specifications/restful/headers#x-barte-correlation-id).
+
+---
+
+### `INVALID_DEBUG_HEADER_VALUE`
+- **Mensagem**: O header `X-Barte-Debug` não DEVE ter um valor diferente de `true` ou `false`.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Assegurar que o header `X-Barte-Debug` seja enviado e corretamente formatado conforme a [especificação de debug](/specifications/restful/headers#x-barte-debug).
+
+## ERR400_INVALID_PAYLOAD
+
+## ERR400_INVALID_PARAMETER
+
+### `INVALID_PARAMETER_FORMAT`
+- **Mensagem**: O formato do body ou dos parâmetros enviados na requisição é inválido.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Verificar a documentação da API para o formato esperado dos parâmetros e do corpo da requisição e corrigir a requisição.
+
+---
+
+### `INVALID_METADATA_FORMAT`
+- **Mensagem**: O formato dos metadados enviados é inválido.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Assegurar que os metadados estejam em um formato JSON válido e sigam a estrutura esperada.
+
+---
+
+### `INVALID_METADATA_LENGTH`
+- **Mensagem**: O tamanho dos metadados excede o limite permitido.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Reduzir o tamanho dos metadados para estar em conformidade com o limite definido.
+
+---
+
+### `INVALID_EXTERNAL_ENTITY_ID_FORMAT`
+- **Mensagem**: O formato do ID de entidade externa não é válido.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Verificar se o ID de entidade externa está corretamente formatado conforme a especificação de entidades.
+
+## ERR401_UNAUTHORIZED
+
+## ERR402_INSUFFICIENT_FUNDS
+
+## ERR403_FORBIDDEN
+
+## ERR404_NOT_FOUND
+
+## ERR405_INVALID_OPERATION
+
+## ERR408_REQUEST_TIMEOUT
+
+## ERR409_SERVER_STATE_CONFLICT
+
+### `CONFLICTING_IDEMPOTENT_REQUEST`
+- **Mensagem**: A requisição não pode ser processada porque a operação já foi executada anteriormente com um payload diferente.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Assegurar que o header `Idempotency-Key` seja enviado e corretamente formatado conforme a [especificação de idempotência](/specifications/restful/headers#idempotency-key).
+
+---
+
+### `EXTERNAL_ENTITY_ID_ALREADY_IN_USE`
+- **Mensagem**: O ID de entidade externa fornecido já está em uso por outro recurso.
+- **Retry**: ✅ Somente após correção.
+- **Tratamento sugerido**:
+  - Utilizar um ID de entidade externa diferente ou verificar o recurso existente que utiliza o ID informado.
+
+## ERR422_BUSINESS_ERROR
+
+## ERR429_RATE_LIMITED
+
+## ERR500_INTERNAL_ERROR
+
+## ERR501_FEATURE_NOT_IMPLEMENTED
+
+## ERR503_SERVICE_UNAVAILABLE
+
+## ERR504_GATEWAY_TIMEOUT
+
+<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>

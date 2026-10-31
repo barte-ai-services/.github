@@ -1,0 +1,7 @@
+{
+  "title": "Especificações",
+  "description": "Os padrões de API, erros, eventos e entidades que todo serviço segue",
+  "root": true,
+  "icon": "FileCode",
+  "pages": ["index", "restful", "error-handling", "auth", "idempotency", "cloud-events", "entities", "glossary"]
+}

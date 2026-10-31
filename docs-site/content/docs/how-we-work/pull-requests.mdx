@@ -1,0 +1,36 @@
+---
+title: Pull requests
+description: O ci é o único check obrigatório, não há revisão humana obrigatória, e o PR entra sozinho quando fica verde.
+---
+
+## O que um pull request carrega
+
+- **O título em [Conventional Commits](/community/contributing)**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` ou `revert`, até 100 caracteres, sem ponto final. O título vira a mensagem do squash na `main`.
+- **A issue que ele fecha**, com `Closes #<n>` no corpo.
+- **A documentação da mudança**, no mesmo PR ([documentação](/how-we-work/documentation)).
+- **Nenhum segredo**, e nenhum contrato quebrado sem estar documentado e versionado.
+
+## Cada PR entra sozinho quando o `ci` passa
+
+- **O `ci` é o único check obrigatório da `main`.** O ruleset de cada repositório exige o `ci` e nada mais. Não há revisão humana obrigatória.
+- **O auto-merge fica ligado.** Logo depois de abrir o PR, ligue o auto-merge:
+
+  ```bash
+  gh pr merge <número> --auto --squash --delete-branch
+  ```
+
+  Um workflow da organização também liga o auto-merge nos PRs abertos que ainda não o têm. Ele pula os PRs em rascunho e os que a review segurou.
+- **Se o `ci` ficar vermelho, conserte.** Não peça a ninguém para mesclar.
+- **Um PR atrás da `main`** tem a branch atualizada, para o `ci` rodar de novo e o auto-merge seguir.
+
+## O `ci` não tem filtro de caminho
+
+O job `ci` roda em todo pull request, sem `paths`. Um check obrigatório que um PR nunca dispara deixa esse PR esperando para sempre.
+
+## Pilhas de PRs
+
+Uma issue grande vira uma pilha de PRs, uma camada por PR, na ordem em que entram. O GitHub não aceita auto-merge num PR cuja base não é a `main`: cada camada entra quando a anterior entrou e a base dela passou a ser a `main`.
+
+## Exceções
+
+Um repositório pode manter o merge manual quando a configuração da organização o marca assim, como o template de onde os projetos nascem. A exceção mora na configuração dos repositórios, não no PR.

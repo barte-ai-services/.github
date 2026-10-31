@@ -1,0 +1,29 @@
+---
+title: Adotar o handbook
+description: O que um repositório faz para seguir o handbook, do primeiro dia em diante.
+---
+
+Um repositório segue o handbook quando tem as peças abaixo. Um repositório novo nasce com elas; um repositório que já existe as recebe por um PR.
+
+## A lista
+
+- [ ] **O Forge instalado**, e com ele o Ahrena e o [bloco do handbook](/how-we-work/agents) no `AGENTS.md`. O `CLAUDE.md` importa o `AGENTS.md`.
+- [ ] **Um workflow `ci`** que roda em todo PR, sem filtro de caminho, e chama os reutilizáveis da organização: `tests`, `traceability`, `conventional-pr` e `handbook-check`. O modelo `ci` da organização é o ponto de partida.
+- [ ] **O `ci` como único check obrigatório** no ruleset da `main`, sem revisão humana obrigatória, e o auto-merge ligado no repositório.
+- [ ] **A review automática** pelo modelo de workflow `argos`.
+- [ ] **Os issue forms da organização.** Basta não ter `.github/ISSUE_TEMPLATE/` próprio; um repositório que tem formulários próprios os substitui pelos do Ahrena.
+- [ ] **Os labels da organização**, sincronizados pelo reutilizável `label-sync`.
+- [ ] **O site de documentação** em `docs-site/`, na casca `docs-template`, e os ADRs em `docs/adr/`.
+
+## O que o GitHub herda sozinho
+
+Um repositório que não tem o arquivo próprio herda do `.github` da organização:
+
+- o `CONTRIBUTING.md`, o `CODE_OF_CONDUCT.md` e o `SECURITY.md`;
+- os issue forms e o modelo de pull request.
+
+O que o GitHub **não** herda, e o projeto precisa ter: o `AGENTS.md`, os workflows (o `.github` só oferece os reutilizáveis e os modelos), o ruleset e a licença.
+
+## Quem se afasta
+
+Um projeto que precisa fazer diferente escreve um ADR em `docs/adr/`, e o bloco do handbook respeita o ADR. Uma regra que vale para mais de um projeto vira um PR neste handbook.
