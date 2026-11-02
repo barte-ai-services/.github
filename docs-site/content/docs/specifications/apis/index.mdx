@@ -1,0 +1,60 @@
+---
+title: APIs
+description: Um contrato para toda instalação, rotas em kebab-case no plural, campos em snake_case, datas em RFC 3339 e dinheiro em unidade mínima.
+---
+
+## O contrato
+
+- **O contrato é um só:** `api/platform.openapi.json`, no repositório [`barte-ai-platform`](https://github.com/barte-ai-services/barte-ai-platform), em OpenAPI 3.0.3. As rotas e os formatos valem para toda instalação.
+- **Cada componente copia o contrato byte a byte.** A cópia não se edita no componente: a mudança entra no contrato da plataforma e desce para os componentes. Teste de contrato prova que a cópia é igual e que a API responde o que ele diz. Não há geração de código a partir dele.
+- **Os valores de cada instalação vêm num overlay**, no formato [OpenAPI Overlay 1.0](https://spec.openapis.org/overlay/v1.0.0.html): as visões, as entidades, os provedores, as rotas de conectores e os exemplos com dado da instalação. O contrato genérico não traz valor de nenhuma organização.
+- **A instalação serve o contrato agregado** em `GET /openapi.json`, já com o overlay aplicado. É dele que o front-end gera o client da API.
+
+## Endereço e versão
+
+- **A base é `https://<endereço da instalação>/api/v1`.** A versão maior fica no caminho.
+- **Toda resposta traz `Contract-Version`**, com a versão inteira do contrato que respondeu, em semver (`MAIOR.MENOR.CORREÇÃO`). A maior é sempre a da rota.
+
+## Rotas
+
+| Regra | Exemplo |
+|---|---|
+| Substantivos em kebab-case, no plural | `/data-operator/providers`, `/data-analytics/views` |
+| O recurso pelo identificador, no caminho | `/data-operator/entities/{entity}` |
+| Uma ação é `POST` num sub-recurso com o verbo | `POST …/providers/{provider}/pause`, `…/resume`, `…/questions/{question}/run`, `/connections/test` |
+| Uma leitura com parâmetros complexos é `POST …/query`, com corpo JSON | `POST /data-analytics/views/{view}/query` ([consultas](/specifications/apis/queries)) |
+
+- **O `operationId` é camelCase**: `getMe`, `getConnections`, `postConnectionsTest`. O contrato ainda traz ids gerados com hífen, como `getData-AnalyticsViews`, e eles migram para camelCase (`getDataAnalyticsViews`).
+- **Toda ação exige `Idempotency-Key`** ([idempotência](/specifications/idempotency)).
+
+## Campos
+
+- **Os campos do JSON são snake_case**: `observed_through`, `run_id`, `currency_field`.
+- **Datas e instantes são RFC 3339, em UTC**: `2026-11-02T13:45:00Z`.
+
+## Dinheiro
+
+- **O valor vai em texto, na menor unidade da moeda**, para não perder precisão: `"5675"` em BRL é R$ 56,75.
+- **A moeda vem em cada linha**, no campo que a visão declara. Não há moeda implícita.
+- **Divida pelo fator da moeda só para mostrar.** Nunca some valores depois de dividir: some na unidade mínima e divida no fim.
+
+## Identificadores
+
+| Identificador | Formato | O que é |
+|---|---|---|
+| Public ID | `^[a-z][a-z0-9]{7}$` | A organização. É a chave em tudo, e o endereço da instalação parte dele |
+| Id do projeto | `p` e 3 caracteres em base 36, com pelo menos um dígito | O projeto, uma linha de operação da organização. Único na organização, nunca muda |
+| Slug | `^[a-z][a-z0-9-]{0,22}[a-z0-9]$` | O nome legível da organização ou do projeto. Nunca é chave |
+
+O slug e o alias nunca entram como identificador numa rota. Os recursos de domínio usam o identificador que o domínio já tem, como o nome do provedor ou o id da execução.
+
+## Nesta seção
+
+| Página | O que cobre |
+|---|---|
+| [Paginação](/specifications/apis/pagination) | `limit`, `after` e `next` |
+| [Consultas](/specifications/apis/queries) | `POST …/query`, com `sort` e `filters` |
+| [Cabeçalhos](/specifications/apis/headers) | `X-Request-Id`, `Idempotency-Key`, `RateLimit`, `ETag` e `Contract-Version` |
+| [Status codes](/specifications/apis/status-codes) | Quando usar cada status, e o código do catálogo de cada um |
+
+<sub>Fonte: `barte-ai-platform/api/platform.openapi.json` e `api/README.md`, ADR-009 e ADR-010 do Backstage, Loom ADR-0015, decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>

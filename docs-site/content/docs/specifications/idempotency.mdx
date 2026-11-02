@@ -1,132 +1,36 @@
 ---
 title: Idempotência
-description: Como garantir que operações repetidas não causem efeitos colaterais, em APIs e eventos
+description: Toda ação exige Idempotency-Key, e todo consumidor repete sem efeito duplicado pela chave e pelo id do workflow.
 ---
 
-A idempotência é uma propriedade fundamental em sistemas distribuídos que garante que operações repetidas com os mesmos parâmetros produzem sempre o mesmo resultado e não causam efeitos colaterais adicionais.
+## Na API: `Idempotency-Key`
 
-No contexto da Barte, a idempotência é essencial para preservar a consistência de dados e garantir a confiabilidade de interações em APIs e no processamento de eventos — especialmente em ambientes sujeitos a falhas de rede, timeouts ou políticas de retry automáticas. Essa prática mitiga riscos como duplicação de transações, inconsistências de estado e efeitos colaterais indesejados.
+Uma ação é um `POST` que muda estado: pausar, retomar, coletar, reconstruir, testar uma conexão ([APIs](/specifications/apis)). Toda rota de ação segue estas regras:
 
----
+| Regra | Valor |
+|---|---|
+| O cabeçalho | `Idempotency-Key`, obrigatório em toda rota de ação |
+| O tamanho | De 1 a 128 caracteres. Fora disso, `400` com `invalid_idempotency_key` |
+| A janela | 24 horas desde o primeiro pedido |
+| O alcance | Por pessoa: a chave vale para quem chamou, o método e a rota. A mesma chave de outra pessoa é outro pedido |
+| A repetição | A mesma chave com o mesmo corpo devolve a mesma resposta, com `Idempotent-Replayed: true`, e a ação não roda de novo |
+| O conflito | A mesma chave com outro corpo é `422` com `idempotency_key_reused` |
 
-## Regras Gerais
+```http
+POST /api/v1/data-operator/providers/{provider}/pause
+Authorization: Bearer …
+Idempotency-Key: pause-2026-11-02-a1
+```
 
-### Princípios Fundamentais
+- **Quem chama gera a chave**, uma por intenção, e a repete em toda nova tentativa da mesma intenção. Uma intenção nova pede uma chave nova.
+- **Repetir com a chave é sempre seguro**: depois de um timeout, de um `502` ou de uma queda de conexão.
+- **Uma leitura não leva chave.** `GET` e `POST …/query` não mudam estado.
 
-- Operações idempotentes DEVEM produzir o mesmo resultado para múltiplas execuções com os mesmos parâmetros.
-- A verificação de idempotência NÃO DEVE depender exclusivamente da chave de idempotência.
-- O controle DEVE considerar a combinação da chave e o hash do payload da requisição ou evento.
-- A chave de idempotência:
-  - DEVE ser fornecida pelo cliente.
-  - DEVE ser única por operação e escopo de rota.
-  - DEVE seguir o formato UUID, conforme [RFC 9562](https://datatracker.ietf.org/doc/html/rfc9562).
-- O hash deve ser gerado com algoritmo `SHA-256`.
+## No consumidor: a chave e o workflow
 
-### Armazenamento e Validação
+Trabalho assíncrono entre componentes é um workflow do Workflow Manager ([eventos](/specifications/events), [workflows](/specifications/workflows)). Repetir o pedido não pode dar dois efeitos:
 
-- O estado de idempotência DEVE ser armazenado em sistema de cache distribuído e resiliente.
-- O tempo de retenção DO estado DEVE ser de no mínimo 2 horas e no máximo 24 horas.
-- O sistema DEVE validar:
-  - Se a chave foi usada.
-  - Se o hash do payload coincide com a execução anterior.
+- **O id do workflow é único.** O Temporal não aceita dois workflows em andamento com o mesmo id. Quem inicia um workflow a partir de uma ação deriva o id da intenção, como a `Idempotency-Key` do pedido, e a repetição encontra o workflow que já existe.
+- **A atividade com efeito colateral que não é idempotente** roda com `maximum_attempts=1` na `RetryPolicy`, e não repete sozinha.
 
-### Segurança e Compliance
-
-- O estado de idempotência DEVE ser armazenado de forma segura, em conformidade com políticas de proteção de dados.
-- O acesso a esses dados DEVE ser auditável.
-- Tentativas maliciosas de repetição com a mesma chave DEVEM ser monitoradas e mitigadas.
-- Logs de operações idempotentes DEVEM conter identificadores rastreáveis para análise posterior.
-
-### Dependências Técnicas
-
-- Armazenamento distribuído para persistência temporária do estado da operação.
-- Cache resiliente para respostas rápidas e deduplicação.
-- Mecanismos de auditoria e monitoramento contínuo.
-
----
-
-## Implementação em APIs
-
-- Endpoints que modificam estado (ex: `POST`, `PATCH`) DEVEM ser idempotentes.
-- O cabeçalho `Idempotency-Key` DEVE ser obrigatório nesses endpoints.
-- QUANDO não informado, o sistema DEVE retornar `400 BAD REQUEST`, com código `ERR400_MISSING_OR_MALFORMED_HEADER` e motivo `IDEMPOTENCY_KEY_REQUIRED`.
-- A resposta DEVE incluir o mesmo cabeçalho `Idempotency-Key` recebido na requisição e o `Content-Digest` com o hash do payload.
-- A chave de idempotência DEVE ser propagada por todas as camadas do sistema, incluindo eventos de dominio e notificações por webhooks.
-- A primeira execução DEVE armazenar:
-  - O resultado da operação.
-  - O hash do payload.
-  - A chave de idempotência e timestamp.
-- Requisições subsequentes com mesma chave e hash do payload:
-  - DEVE retornar o resultado original armazenado.
-  - NÃO DEVE executar a operação novamente.
-  - DEVE incluir o header `Last-Modified` com a data original da execução.
-- QUANDO a chave já estiver registrada, MAS o hash do payload for diferente:
-  - O sistema DEVE rejeitar a requisição com erro `409 CONFLICT`, código `ERR409_SERVER_STATE_CONFLICT` e motivo `CONFLICTING_IDEMPOTENT_REQUEST`.
----
-
-## Implementação em Eventos
-
-- Todos os eventos publicados pela plataforma DEVEM ser idempotentes.
-- O campo `idempotencykey` DEVE estar presente no payload, conforme [spec de eventos](/specifications/cloud-events).
-- O consumidor DEVE registrar o estado de execução com base na chave e hash do evento.
-- O evento DEVE ser considerado único por `idempotencykey`.
-- Se um evento já tiver sido processado:
-  - O sistema DEVE ignorá-lo e retornar ACK ao broker.
-  - NÃO DEVE reexecutar a lógica associada.
-  - A execução original PODE ser registrada em logs para fins de auditoria.
-
-## Comportamentos Esperados
-
-### Em APIs
-
-#### Primeira requisição:
-- Operação é processada.
-- Resultado é persistido com a chave e o hash do payload.
-- Retorna 200 com payload e `Idempotency-Key`.
-
-#### Requisição repetida com mesma chave e hash do payload:
-- Resultado anterior é retornado.
-- Operação NÃO é reexecutada.
-- Retorna 200 e header `Last-Modified`.
-
-#### Requisição com mesma chave e hash do payload diferente:
-- O sistema REJEITA com erro `409 CONFLICT`.
-- Deve retornar mensagem clara com código `ERR409_SERVER_STATE_CONFLICT` e motivo `CONFLICTING_IDEMPOTENT_REQUEST`.
-
-### Em Eventos
-
-#### Primeiro recebimento:
-- Evento é processado normalmente.
-- Resultado é persistido para deduplicação futura.
-- Estado do sistema é alterado conforme regra de negócio.
-
-#### Evento duplicado:
-- Evento é reconhecido como já processado.
-- Operação é ignorada.
-- ACK é enviado ao broker.
-- Logs PODEM indicar que se tratava de evento repetido.
-
-## Quando Usar
-
-A idempotência DEVE ser aplicada:
-
-- Em qualquer operação que modifique o estado do sistema (APIs e eventos).
-- Em fluxos críticos de negócio (ex: criação de transações, usuários, contratos).
-- Em sistemas sujeitos a falhas de rede, replicações ou timeouts.
-- Sempre que o cliente ou consumidor tiver política de retry ativa.
-
-## Quando Não Usar
-
-A idempotência NÃO DEVE ser aplicada:
-
-- Em operações puramente de leitura (ex: `GET`, eventos de consulta).
-- Em fluxos que não geram efeitos colaterais.
-- Em chamadas que, por definição, sempre devem produzir resultado novo (ex: geração de UUID aleatório, polling, etc).
-
-
-## Referências
-
-- [Draft RFC The Idempotency-Key Header Field](https://www.ietf.org/archive/id/draft-ietf-httpapi-idempotency-key-header-01.html)
-- [RFC 9562](https://datatracker.ietf.org/doc/html/rfc9562)
-
-<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>
+<sub>Fonte: `barte-ai-platform/api/platform.openapi.json` (`IdempotencyKey`), `chronicle/packages/api/src/chronicle_api/http.py`, `chronicle/apps/data-operator-mcp/README.md`, Integration Gateway ADR-0042, `loom/AGENTS.md`, decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>

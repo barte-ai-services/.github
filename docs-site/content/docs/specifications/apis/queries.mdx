@@ -1,0 +1,51 @@
+---
+title: Consultas
+description: Uma leitura com parâmetros complexos é POST …/query, com sort e filters no corpo.
+---
+
+## Quando é `POST …/query`
+
+Uma leitura cabe em `GET` com query string quando tem poucos parâmetros simples. Quando ela pede filtros compostos, ordenação por mais de um campo ou uma lista de valores, ela vira `POST` no sub-recurso `query`, com um corpo JSON:
+
+```http
+POST /api/v1/data-analytics/records/{view}/query
+Content-Type: application/json
+```
+
+```json
+{
+  "filters": [
+    { "field": "due_date", "op": "between", "values": ["2026-10-01", "2026-10-31"] },
+    { "field": "status", "op": "in", "values": ["open", "overdue"] }
+  ],
+  "sort": [
+    { "field": "due_date", "dir": "desc" },
+    { "field": "amount", "dir": "asc" }
+  ],
+  "limit": 50,
+  "after": null
+}
+```
+
+- **`POST …/query` não muda estado.** Ele é uma leitura, e por isso não pede `Idempotency-Key`.
+- **A resposta pagina** como qualquer listagem ([paginação](/specifications/apis/pagination)).
+
+## Ordenação
+
+- **`sort` é uma lista de `{field, dir}`**, aplicada na ordem da lista.
+- **`dir` é `asc` ou `desc`**, e o padrão é `asc`.
+- **Só ordena por campo que a rota declara.** Um campo fora do catálogo é `422` com o código [`refused`](/specifications/errors/catalog).
+
+## Filtros
+
+- **`filters` é uma lista de `{field, op, values}`**, e todos valem juntos.
+- **O operador depende da família do campo:**
+
+| Família do campo | Operadores |
+|---|---|
+| período e faixa de valor | `between`, `gte`, `lte`, `empty`, `not_empty` |
+| categoria, status e contraparte | `in`, `not_in`, `empty`, `not_empty` |
+
+- **Um operador fora da família, ou um campo que não existe, é `422`** com `refused`, e `errors[]` diz qual campo.
+
+<sub>Fonte: `barte-ai-platform/api/platform.openapi.json` (`RecordsQuery`, `RowOrder`, `RowFilter`, `QueryRequest`).</sub>

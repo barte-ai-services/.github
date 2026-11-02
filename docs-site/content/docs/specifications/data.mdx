@@ -1,0 +1,71 @@
+---
+title: Dados
+description: Dado de operação e de análise passa pelo Data Operator, todo modelo gera o canônico, e cada banco tem uma forma só.
+---
+
+## Dado de operação e de análise passa pelo Data Operator
+
+**A operação de dados e a análise de dados passam pelo Data Operator e pelo Data Analytics**, os dois do Chronicle. Um componente não monta um pipeline, um lake ou uma camada de consulta própria.
+
+- **O Data Operator coleta e guarda.** Ele busca os dados dos provedores pelo Integration Gateway, guarda o histórico versionado e deriva dele o canônico e as projeções.
+- **O Data Analytics serve.** Painel, integração e agente leem pelas portas declaradas, e nenhum consumidor tem porta própria para o banco.
+- **O Airflow do Data Operator só faz o paralelismo do pipeline.** Todo outro fluxo é um workflow do Workflow Manager ([workflows](/specifications/workflows)).
+
+## As três camadas
+
+O lake é um medalhão, e cada camada é um esquema da base do Chronicle:
+
+| Camada | Contrato | O que é | Se perder |
+|---|---|---|---|
+| bronze | `raw_data` | O fato como chegou do Integration Gateway, já minimizado, com o histórico de observação | Backfill, enquanto o provedor servir a janela |
+| silver | `canonical` | O canônico: o mesmo fato com significado declarado, uma tabela por entidade e a de histórico dela | Reconstrói do bronze |
+| gold | projeções | O formato que um caso de consumo pediu | Recalcula |
+| gold | grafo | O canônico visto como nó e aresta | Recalcula |
+
+**Só o bronze é fonte.** As outras camadas são função dele: mudar um mapeamento custa um reprocessamento, e não uma migração.
+
+## Todo modelo de dados gera o canônico
+
+**Todo modelo de dados que entra na plataforma gera o canônico, no silver.** Não há dado que vá do bronze a uma projeção sem passar por ele.
+
+Cada objeto do canônico declara:
+
+| Declarado | Exemplo | Para que serve |
+|---|---|---|
+| grão | Uma linha é uma cobrança, e não um pagamento | Impede soma que conta duas vezes |
+| unidade e moeda | Centavos, BRL | Impede somar real com centavo |
+| vocabulário | `paid` de um provedor é `settled` de outro | Torna a pergunta independente do provedor |
+| vínculos | Cobrança → fatura → assinatura | Substitui o `JOIN` improvisado |
+
+- **O canônico mora no pack**, ao lado dos endpoints e do mapa de resposta, em YAML. O esquema e o catálogo que o agente lê saem dessa declaração, e nunca são escritos à mão.
+- **Os vínculos são as arestas.** A entidade que declara vínculos ganha a tabela `silver.<entidade>_link`, com o `id` da origem ligado ao `id` do destino.
+- **O vínculo para no provedor.** Sem chave da organização, o vínculo fica dentro do provedor, pela chave natural do destino. Entre provedores, só há vínculo por uma chave que a organização declara nos dois lados (`client_key` no campo de cada lado). Fora disso não há aresta: a plataforma diz que não sabe, em vez de adivinhar.
+- **O destino que ainda não chegou não tem aresta.** A chave fica na origem, e a carga do destino liga quando ele chega.
+
+## O grafo dos dados
+
+- **O grafo dos dados é construído dos vínculos**, ao fim de cada ciclo.
+- **É projeção, nunca fonte.** Perder o grafo é recalcular.
+- **Sobe em toda instalação**, e roda em contêiner, dentro da imagem do Chronicle, e não num serviço gerenciado de nuvem.
+
+## Defasagem é coluna
+
+Toda projeção declara `observed_through`: o instante até onde todas as entradas dela foram observadas. O valor sobe pela pilha inteira, e nenhum número sai da plataforma sem a idade dele junto.
+
+## DynamoDB
+
+- **Tabela única**, com `pk` e `sk`, e as chaves com prefixo de tipo: `TYPE#<id>`.
+- **Sob demanda** (`PAY_PER_REQUEST`), com **PITR** ligado em production.
+- **O TTL é o atributo `ttl`, em segundos de época.**
+- **Toda escrita leva versão** e grava um item de auditoria.
+- **Os papéis da aplicação não apagam fisicamente.**
+
+## PostgreSQL
+
+- **Aurora PostgreSQL Serverless v2**, cifrado, com 14 dias de backup e proteção contra exclusão em production.
+- **As migrações são SQL numerado, só para frente**: `migrations/NNNN_<slug>.sql`. Uma migração aplicada não muda; a correção é uma migração nova.
+- **Os domínios do Workflow Manager usam Alembic**, com a tabela de versão dentro do esquema do domínio.
+
+Um Ledger entra mais tarde na plataforma, e ainda não existe.
+
+<sub>Fonte: decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24), `chronicle/docs/architecture/README.md` («As três camadas», «O canônico», «O grafo é projeção»), Chronicle ADR-0002, ADR-0011 e ADR-0036, Loom ADR-0007, `infra/modules/client-registry`, decisão 3 da barte-ai-services/.github#24.</sub>
