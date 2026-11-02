@@ -19,6 +19,8 @@ npm run build    # dist/handler.mjs, o pacote da Lambda
 
 ## Onde roda
 
-Uma Lambda atrás de um HTTP API, na conta da AI Services. A infra é do `barte-ai-services/infra`, raiz `control-plane/handbook-mcp`, e o ADR de lá explica por que o endereço é público.
+O MCP fica atrás do Identity Manager. Ele não confia em proxy nem em rede: valida ele mesmo o token de cada pedido, conferindo o emissor, a audiência, a assinatura e o domínio da pessoa.
 
-O workflow `handbook-mcp` confere o servidor em todo pull request e, a cada merge na `main`, troca o código da função e confere que o servidor responde com o commit novo. Ele usa as variáveis `BARTE_HANDBOOK_MCP_DEPLOY_ROLE_ARN` e `BARTE_HANDBOOK_MCP_URL` do repositório; sem elas, o deploy é pulado com um aviso.
+Ele ainda não está no ar (barte-ai-services/.github#21). Até estar, as IAs consultam o handbook pelo site.
+
+O workflow `handbook-mcp` confere o servidor em todo pull request e, a cada merge na `main`, troca o código da função, quando a infraestrutura do `barte-ai-services/infra` estiver pronta; até lá, o deploy é pulado com um aviso.
