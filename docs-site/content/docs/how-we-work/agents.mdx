@@ -33,7 +33,9 @@ O handbook também é um servidor MCP, o `barte-handbook`, para que uma IA o con
 | `search` | Busca nas páginas, em pt-BR ou inglês, com e sem acento |
 | `check_technology` | O anel de uma tecnologia no [Tech Radar](/specifications), para que serve e como usar |
 
-O servidor só lê, não guarda nada e não pede login: o conteúdo é este handbook, que já é público. Ele responde com o que estava na `main` deste repositório no último merge, porque cada merge publica o servidor de novo.
+O servidor só lê e não guarda nada. Ele responde com o que estava na `main` deste repositório no último merge, porque cada merge publica o servidor de novo.
+
+<Callout>O MCP do handbook ainda não está no ar. Ele entra com o mesmo login do Backstage, quando esse login existir. Até lá, a consulta é pelo site.</Callout>
 
 Para registrar num repositório, o Forge escreve no `.mcp.json` a entrada `barte-handbook`, com o endereço do servidor. No claude.ai, ele entra como conector da organização.
 
