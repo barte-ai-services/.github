@@ -1,0 +1,48 @@
+---
+title: Ferramentas
+description: Node 24 com pnpm, Python 3.12 ou mais com uv, cobertura no check, make check igual ao CI e o compose do dev local.
+---
+
+## TypeScript
+
+| O que | Ferramenta |
+|---|---|
+| Runtime | Node 24 LTS, imagem `node:24-alpine` |
+| Pacotes | pnpm |
+| Lint | ESLint, em flat config |
+| Formato | Prettier |
+| Teste | vitest |
+| Tipos | `tsc` |
+
+## Python
+
+| O que | Ferramenta |
+|---|---|
+| Versão | `requires-python = ">=3.12"`. Imagem `python:3.13-slim`; as imagens do Airflow ficam no 3.12 |
+| Pacotes e workspace | uv. Cada pasta é membro do workspace e declara as próprias dependências no próprio `pyproject.toml` |
+| Lint e formato | ruff, `ruff format` e `ruff check` |
+| Tipos | mypy |
+| Teste | pytest |
+
+## Cobertura
+
+**O `check` exige pelo menos 70% das linhas e 65% dos branches.** Abaixo disso, o `check` falha, e o `ci` junto.
+
+## Todo repositório
+
+- **`make check` é o mesmo que o CI.** Ele passa antes do commit. Um passo que roda no CI e não roda no `make check`, ou o contrário, é defeito.
+- **`deploy/compose/compose.yml` sobe o desenvolvimento local**, com as dependências do componente na forma da instalação.
+
+## A forma de um módulo
+
+| Pasta | O que mora nela |
+|---|---|
+| `apps/` | O que atende: API, MCP, tela |
+| `workers/` | O que trabalha: os workers do Workflow Manager, um por domínio |
+| `packages/` | O que os dois usam, incluindo `observability`, `config` e `secrets` |
+| `deploy/terraform/aws` | O módulo Terraform do componente |
+| `deploy/compose` | O desenvolvimento local |
+
+**A dependência só desce.** Um pacote nunca importa um deployável, e um deployável nunca importa outro. O que dois compartilham vira pacote.
+
+<sub>Fonte: `loom/AGENTS.md`, `shell/vitest.config.mts`, os `pyproject.toml` e os `Dockerfile` dos módulos (`chronicle`, `gatekeeper`, `loom`, `shell`, `tessera`), decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>

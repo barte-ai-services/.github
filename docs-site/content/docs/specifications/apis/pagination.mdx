@@ -1,0 +1,37 @@
+---
+title: Paginação
+description: Cursor opaco com limit e after, a resposta com next, sem total e sem envelope.
+---
+
+## O pedido
+
+| Parâmetro | Tipo | Padrão | O que é |
+|---|---|---|---|
+| `limit` | inteiro | 20 | Quantos itens por página, no máximo 100 |
+| `after` | texto | — | O `next` da página anterior. Omita na primeira |
+
+Numa listagem `GET`, os dois vão na query: `GET /data-operator/runs?limit=50&after=<cursor>`. Numa [consulta](/specifications/apis/queries) `POST …/query`, vão no corpo.
+
+## A resposta
+
+```json
+{
+  "runs": [
+    { "run_id": "…", "state": "success" }
+  ],
+  "next": "eyJrIjoi…"
+}
+```
+
+- **O array leva o nome do domínio** (`runs`, `providers`, `rows`), e não `data` nem `items`.
+- **`next` é o cursor da próxima página**, opaco, e vem `null` na última.
+- **Não há total.** Contar tudo custa uma leitura inteira a cada página.
+- **Não há envelope** de paginação (`pagination`, `meta`, `links`).
+
+## O cursor
+
+- **O cursor é opaco.** Quem consome não o monta nem o lê: só devolve o `next` em `after`.
+- **O cursor vale para a rota e o filtro que o criaram.** Um cursor de outra rota, de outro filtro ou estragado é `400` com o código [`bad_cursor`](/specifications/errors/catalog): peça a primeira página de novo.
+- **Nunca há `OFFSET`.** A página segue a chave da última linha lida, e não a posição.
+
+<sub>Fonte: `barte-ai-platform/api/platform.openapi.json` (`RunsResponse`, `RecordsPage`), ADR-001 D1 do Backstage, `backstage/core/src/cursor.ts`.</sub>

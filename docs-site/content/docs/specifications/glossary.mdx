@@ -1,16 +1,55 @@
 ---
 title: Glossário
-description: Os termos usados nas especificações
+description: Os termos da Barte usados nas especificações.
 ---
 
-## Termos Gerais
+## A organização e o projeto
 
-### API Pública (ou API Externa)
+| Termo | O que é |
+|---|---|
+| **Organização** | A empresa que a Barte atende. Tem um public ID, um slug, um repositório e uma instalação por ambiente. Nunca se diz «cliente» |
+| **Public ID** | O identificador da organização, sorteado pelo cadastro, no formato `^[a-z][a-z0-9]{7}$`. É a chave em tudo: no cadastro, nos nomes de recurso (`barteai-<public_id>-*`), nos parâmetros, nos logs e nos alarmes. Nunca muda |
+| **Slug** | O nome legível da organização ou do projeto, até 24 caracteres (`^[a-z][a-z0-9-]{0,22}[a-z0-9]$`). Dá nome ao repositório e aos canais do Slack. Nunca é chave |
+| **Alias** | O endereço que a organização vê, formado pelo slug, sobre o endereço do public ID |
+| **Projeto** | Uma linha de operação da organização, de ponta a ponta: contas a pagar é um projeto, contas a receber é outro. Tem id próprio (`p` e 3 caracteres em base 36) e slug próprio, mora no repositório da organização e divide a instalação dela |
+| **Corte** | Uma versão estável de um projeto para production: a tag `<slug-do-projeto>/v<ano>.<semana>.<n>`, como `contas-a-pagar/v2026.44.0`. Quem corta é o AI Enabler, no Backstage, e a tag é criada pelo app do GitHub |
+| **Promoção** | Levar um corte para production. É outro clique, separado do corte, e só aceita cortes, pelo digest, sem novo build. Voltar uma versão é promover um corte anterior |
 
-API exposta pela Barte via PaaS acessível através da internet e que requer autenticação OAuth 2.0 conforme as especificações do FAPI 2.0 Security Profile.
+## Onde roda
 
-### API Privada (ou API Interna)
+| Termo | O que é |
+|---|---|
+| **Instalação** | A plataforma rodando para uma organização num ambiente: o par (public ID, ambiente). Atende no endereço da instalação |
+| **Ambiente** | Só há dois: `staging` e `production`. Staging é do time, aplicado a cada commit da `main` que passa no CI. Production roda cortes, sempre numa conta da organização na org AWS da Barte |
+| **Componente** | Uma peça da plataforma que sobe na instalação, com slug próprio: os módulos e o Shell |
+| **Control plane** | Onde roda o que é da Barte e não de uma organização: o Backstage, o Workflow Manager e o Identity Manager do time |
 
-APIs dos módulos da Barte exposta pela Barte via PaaS acessível apenas internamente, via VPC, e que requer autenticação OAuth 2.0, com token emitido por um Identity Provider (IdP) conhecido e confiável.
+## Os módulos
 
-<sub>Adaptado do Guardia Developer Hub ([guardiatechnology/.github](https://github.com/guardiatechnology/.github)), licenciado sob Apache-2.0; hoje propriedade intelectual da Ahrena. Modificado pela Barte.</sub>
+| Nome comercial | Nome de código | O que faz |
+|---|---|---|
+| **Identity Manager** | `tessera` | O login: o Keycloak de cada instalação, e o do control plane para o time |
+| **Workflow Manager** | `loom` | O único orquestrador, sobre o Temporal |
+| **Data Operator** | `chronicle` | A coleta, o lake, o canônico e as projeções; com o Data Analytics, a análise |
+| **Integration Gateway** | `gatekeeper` | A saída para os provedores: a credencial, o limitador e a minimização da resposta |
+| **Shell** | `shell` | O portal da organização, onde as telas dos módulos moram |
+
+Na tela e no texto, o nome é o comercial. O nome de código fica no código, nos caminhos e nos repositórios.
+
+## Os dados
+
+| Termo | O que é |
+|---|---|
+| **Canônico** | A camada silver: o dado com grão, unidade, moeda, vocabulário e vínculos declarados ([dados](/specifications/data)) |
+| **Vínculo** | Uma aresta do canônico, de uma entidade para outra, em `silver.<entidade>_link`. Para no provedor |
+| **Grafo dos dados** | O canônico visto como nó e aresta. É projeção, nunca fonte |
+
+## As pessoas e as ferramentas
+
+| Termo | O que é |
+|---|---|
+| **Backstage** | O sistema da Barte onde nascem as organizações, os projetos e os nomes. É a fonte da verdade: o que se define nele é copiado para os outros sistemas, e nunca redigitado |
+| **AI Enabler** | O tech lead do projeto. Corta as versões no Backstage |
+| **Client partner** | O papel da Barte que responde pela relação com a organização. Pode criar a organização no Backstage |
+
+<sub>Fonte: ADR-004 D6, ADR-005, ADR-009 e ADR-010 do Backstage, Loom ADR-0015, `chronicle/docs/architecture/README.md`, decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>

@@ -1,0 +1,27 @@
+---
+title: E-mail
+description: O padrão é o SES, sempre. O e-mail do Identity Manager passa pelo relay, em todo modelo de implantação.
+---
+
+## O padrão é o SES
+
+**Todo envio de e-mail passa pelo Amazon SES.** É o padrão, sempre, e é como o primeiro projeto de faturamento já envia.
+
+- **Cada instalação envia pelo SES da própria conta**, com um domínio de envio por instalação, com DKIM, MAIL FROM e DMARC.
+- **A política do worker fixa o remetente** (`ses:FromAddress`). Um worker não envia em nome de outro endereço.
+- **Um projeto só envia bytes aprovados.** O e-mail que sai é a versão que uma pessoa aprovou ([aprovações](/specifications/approvals)).
+- **Ler uma caixa de entrada é outra porta**, de entrada, separada do envio: por exemplo, o Microsoft 365 pelo Graph.
+
+## O servidor de e-mail da organização
+
+**O servidor de e-mail próprio de uma organização é exceção.** Ele é avaliado caso a caso, só quando a instalação roda na infraestrutura da organização, e a decisão fica registrada num ADR.
+
+## O e-mail do Identity Manager
+
+**O e-mail do Identity Manager (login, convite e recuperação) sempre passa pelo relay**, em todo modelo de implantação: na nuvem da organização, na nuvem da Barte e on-premise.
+
+- **O relay é o `tessera-mail-relay`**, um contêiner ao lado do Keycloak, na mesma tarefa.
+- **Ele ouve SMTP só em localhost**, aceita só o remetente do realm e envia ao SES com a role da tarefa.
+- **Não há credencial SMTP.**
+
+<sub>Fonte: decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24), a prática do projeto de faturamento (ADR-0029 do projeto).</sub>

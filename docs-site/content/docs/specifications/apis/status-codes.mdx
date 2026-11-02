@@ -1,0 +1,63 @@
+---
+title: Status codes
+description: Quando usar cada status HTTP, e o código do catálogo que acompanha cada erro.
+---
+
+O status diz a classe do resultado. O `code` do problem diz qual erro foi, e é por ele que quem consome trata ([catálogo](/specifications/errors/catalog)). Todo status que uma rota devolve está declarado no contrato.
+
+## 2xx: sucesso
+
+| Status | Quando | Quando não |
+|---|---|---|
+| `200 OK` | A leitura ou a ação terminou, e a resposta traz o resultado. Uma listagem vazia também é `200`, com o array vazio | Um recurso novo foi criado (`201`); o trabalho ainda não terminou (`202`) |
+| `201 Created` | A ação criou um recurso, e a resposta traz o recurso | O recurso já existia e só mudou (`200`) |
+| `202 Accepted` | A ação começou um trabalho assíncrono, um workflow, que ainda não terminou | O resultado já está pronto (`200`) |
+| `204 No Content` | A ação terminou e não há nada a devolver | Há resultado a devolver |
+
+## 3xx: cache
+
+| Status | Quando |
+|---|---|
+| `304 Not Modified` | O `If-None-Match` do pedido é igual ao `ETag` atual ([cabeçalhos](/specifications/apis/headers)). Sem corpo |
+
+As APIs da Barte não redirecionam.
+
+## 4xx: o pedido não vale
+
+| Status | Quando | Quando não | Códigos |
+|---|---|---|---|
+| `400 Bad Request` | O pedido está malformado: corpo que não é JSON, parâmetro com tipo errado, cabeçalho inválido, cursor estragado | O pedido chegou inteiro e um campo não vale (`422`) | `bad_request`, `invalid_body`, `invalid_parameter`, `bad_cursor`, `invalid_idempotency_key` |
+| `401 Unauthorized` | Sem token, ou o token é de outro emissor, de outra audiência, ou venceu. Traz `WWW-Authenticate` | A pessoa está autenticada e não tem o papel (`403`) | `unauthorized` |
+| `403 Forbidden` | A pessoa está autenticada e nenhum papel dela abre a rota, ou ela é `root` | Sem token (`401`) | `forbidden` |
+| `404 Not Found` | O recurso não existe nesta instalação, ou a pessoa não o alcança | — | `not_found` |
+| `405 Method Not Allowed` | A rota existe, e o método não. Traz `Allow` | — | `method_not_allowed` |
+| `409 Conflict` | A ação não cabe no estado atual, como um backfill pedido quando já há um do provedor | A mesma `Idempotency-Key` com outro corpo (`422`) | `conflict` |
+| `413 Content Too Large` | O corpo passa do tamanho aceito | — | `request_too_large` |
+| `422 Unprocessable Content` | O pedido chegou inteiro e um campo não vale: medida que não existe, operador fora da família, chave de idempotência reusada. Traz `errors[]` quando é campo | O pedido está malformado (`400`) | `refused`, `idempotency_key_reused` |
+| `424 Failed Dependency` | A instalação ainda não tem o que a rota precisa: o provedor sem credencial, o conector sem upstream | O provedor existe e falhou (`502`) | `upstream_not_provisioned`, `upstream_not_configured` |
+| `429 Too Many Requests` | O limite de uso acabou. Traz `Retry-After`, `RateLimit` e `RateLimit-Policy` | — | `rate_limited` |
+
+Um recurso que existe e a pessoa não alcança é `404`, e não `403`: a resposta não diz que ele existe.
+
+## 5xx: a instalação ou o provedor falhou
+
+| Status | Quando | Quando não | Códigos |
+|---|---|---|---|
+| `500 Internal Server Error` | Uma exceção que ninguém tratou. O `detail` não diz o porquê | O erro é previsível e quem chama pode corrigir (`4xx`) | `internal` |
+| `502 Bad Gateway` | O componente de trás ou o provedor respondeu com erro, com um redirecionamento, com uma resposta grande demais ou impossível de reduzir, ou não respondeu | O provedor demorou (`504`) | `upstream_error`, `upstream_unreachable`, `redirect_not_allowed`, `upstream_response_too_large`, `upstream_not_minimizable` |
+| `503 Service Unavailable` | Um estado compartilhado está fora do ar, ou o login não tem emissor | Uma falha do provedor (`502`) | `unavailable`, `login_unavailable` |
+| `504 Gateway Timeout` | O provedor demorou demais para responder | O provedor recusou (`502`) | `upstream_timeout` |
+
+Um `502` nunca repassa o corpo do provedor: o problem diz o que falhou, e o detalhe fica no log, pelo `X-Request-Id`.
+
+## O que não usamos
+
+- **`402`**: nenhuma rota é condicionada a pagamento.
+- **`501`**: uma rota que não existe não está no contrato, e o método que falta é `405`.
+- **`307` e os outros redirecionamentos**: as APIs não redirecionam.
+
+## Referências
+
+- [RFC 9110, HTTP Semantics](https://datatracker.ietf.org/doc/html/rfc9110#name-status-codes)
+
+<sub>Fonte: `barte-ai-platform/api/platform.openapi.json` (`components.responses`), `chronicle/packages/api/src/chronicle_api/problem.py`, Chronicle ADR-0057, referências de erro do Integration Gateway (`gatekeeper/docs/reference`), decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>

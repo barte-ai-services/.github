@@ -1,7 +1,23 @@
 {
   "title": "Especificações",
-  "description": "Os padrões de API, erros, eventos e entidades que todo serviço segue",
+  "description": "Os padrões de API, erros, autenticação, workflows, dados e operação que todo componente segue",
   "root": true,
   "icon": "FileCode",
-  "pages": ["index", "tech-radar", "restful", "error-handling", "auth", "idempotency", "cloud-events", "entities", "glossary"]
+  "pages": [
+    "index",
+    "apis",
+    "errors",
+    "auth",
+    "idempotency",
+    "events",
+    "workflows",
+    "approvals",
+    "email",
+    "data",
+    "configuration",
+    "observability",
+    "tooling",
+    "tech-radar",
+    "glossary"
+  ]
 }

@@ -1,0 +1,39 @@
+---
+title: Eventos
+description: Não há barramento de eventos na plataforma. Trabalho assíncrono é um workflow, e eventos de telemetria têm um catálogo por componente.
+---
+
+## Não há barramento
+
+**A plataforma não tem barramento de eventos.** Nenhum componente publica num tópico para outro consumir.
+
+| Quero | Uso |
+|---|---|
+| Que um componente faça um trabalho depois, ou demorado, ou em vários passos | Um workflow do Workflow Manager ([workflows](/specifications/workflows)) |
+| Que um componente reaja a algo que aconteceu em outro | O componente que sabe do fato inicia ou sinaliza o workflow, pela API do Workflow Manager |
+| Que algo rode de tempos em tempos | Um schedule do Workflow Manager |
+| Que uma pessoa saiba que algo quebrou | Um alarme, pelo SNS da instalação ([observabilidade](/specifications/observability)) |
+| Saber o que aconteceu dentro de um componente | Um evento de telemetria, do catálogo dele |
+
+- **O SNS só leva alarmes.** Ele não é fila de trabalho entre componentes.
+- **Nada de webhook de entrada.** Um aviso de fora chega pela fila do control plane, ou por uma conexão que a plataforma abre, como o Socket Mode do Slack, e nunca por uma rota pública que recebe chamadas.
+
+## Eventos de telemetria
+
+Um evento de telemetria diz o que aconteceu dentro de um componente. Ele vai para o log e para o trace, e é por ele que quem opera diagnostica.
+
+- **Cada componente declara o catálogo dos seus eventos**, num lugar só do código (`packages/observability`). A severidade está no catálogo, e não na chamada, e por isso é a mesma em toda instalação.
+- **O tipo é pontuado: `<assunto>.<verbo no passado>`**, em inglês e snake_case: `upstream.redirected`, `contract.field_vanished`.
+- **A mensagem é fixa**, e o que varia vai em campos. Buscar a mensagem acha toda ocorrência.
+- **Todo evento de um pedido leva o `request_id`**, o mesmo `X-Request-Id` da resposta.
+- **Um evento nunca leva segredo nem dado pessoal.**
+
+```json
+{ "level": "info", "msg": "…", "event": "upstream.redirected", "request_id": "6f1c2a9e-…", "upstream": "…", "status": 200 }
+```
+
+## Idempotência do consumidor
+
+Quem processa um trabalho assíncrono o faz uma vez só, mesmo que o pedido chegue duas vezes: pela `Idempotency-Key` e pela unicidade do id do workflow ([idempotência](/specifications/idempotency)).
+
+<sub>Fonte: ADR-004 D2 e D3 e ADR-007 do Backstage, `loom/README.md`, `gatekeeper/packages/observability` e o catálogo de eventos do Integration Gateway, `barte-ai-platform/infra/aws/terraform` (tópico de alarmes), decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24).</sub>
