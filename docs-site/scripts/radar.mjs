@@ -173,7 +173,7 @@ for (const ring of rings) {
 
 if (Array.isArray(drift) && drift.length > 0) {
   lines.push(
-    '## Versões a padronizar [#drift]',
+    '## Versões que convivem [#drift]',
     '',
     'Tecnologias homologadas que hoje convivem em mais de uma versão nos repositórios.',
     '',
@@ -183,6 +183,11 @@ if (Array.isArray(drift) && drift.length > 0) {
     '',
   );
 }
+
+lines.push(
+  '<sub>Fonte: ADR-001, ADR-004 e ADR-007 de `barte-ai-services/backstage`, ADR-0003 de `barte-ai-services/guild`, ADR-0030 e ADR-0036 de `barte-ai-services/chronicle`, `barte-ai-services/barte-ai-platform`, decisões 4 e 6 da barte-ai-services/.github#24.</sub>',
+  '',
+);
 
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, lines.join('\n'));

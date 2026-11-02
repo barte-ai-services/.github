@@ -48,7 +48,7 @@ technologies:
     ring: adopt
     version: "3.12+, uv"
     what: A linguagem dos dados, dos workflows, dos agentes e das APIs de domínio.
-    how: Copie `projects/exemplo` de `barte-ai-services/barte-ai-platform`, com `requires-python = ">=3.12"` no `pyproject.toml` e o `uv.lock` versionado.
+    how: Copie o projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`, com `requires-python = ">=3.12"` no `pyproject.toml` e o `uv.lock` versionado.
 
   - id: nextjs
     name: Next.js + React + ui-kit e shell-kit
@@ -56,21 +56,21 @@ technologies:
     ring: adopt
     version: "Next.js 16, React 19"
     what: As telas. Cada tela de módulo é uma zone que veste a moldura do Shell.
-    how: Instale `@barte-ai-services/barte-ui-kit` e `@barte-ai-services/shell-kit`, do GitHub Packages. A zone de exemplo está em `examples/zone` de `barte-ai-services/shell`, e a de um projeto em `projects/exemplo/apps/web` de `barte-ai-services/barte-ai-platform`.
+    how: Instale `@barte-ai-services/barte-ui-kit` e `@barte-ai-services/shell-kit`, do GitHub Packages. A zone de exemplo está em `examples/zone` de `barte-ai-services/shell`, e a de um projeto em `apps/web` do projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`.
 
   - id: fastapi
     name: FastAPI
     quadrant: frameworks
     ring: adopt
     what: As APIs HTTP em Python.
-    how: Siga `projects/exemplo/apps/api` de `barte-ai-services/barte-ai-platform`, que pluga as rotas do domínio na API do Workflow Manager.
+    how: Siga `apps/api` do projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`, que pluga as rotas do domínio na API do Workflow Manager.
 
   - id: mcp-sdk
     name: MCP SDK (TypeScript e Python)
     quadrant: frameworks
     ring: adopt
     what: Os servidores MCP, que expõem um módulo aos agentes.
-    how: Em Python, o pacote `mcp`, como nos servidores MCP do Data Operator (`apps/data-operator-mcp` de `barte-ai-services/chronicle`). Em TypeScript, o SDK oficial `@modelcontextprotocol/sdk`; fale com o time de plataforma para o exemplo de referência.
+    how: Em Python, o pacote `mcp`, como nos servidores MCP do Data Operator (`apps/data-operator-mcp` de `barte-ai-services/chronicle`). Em TypeScript, o SDK oficial `@modelcontextprotocol/sdk`, como em `mcp/` de `barte-ai-services/.github`, o exemplo de um MCP só, que confere ele mesmo o token do Identity Manager. Esse desenho ainda não está no ar.
 
   - id: opentelemetry
     name: OpenTelemetry + Collector
@@ -84,14 +84,14 @@ technologies:
     quadrant: platforms
     ring: adopt
     what: Toda a infraestrutura, como código.
-    how: Cada módulo traz o seu Terraform em `deploy/terraform`, e a instalação os compõe em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Um projeto sobe os apps dele por `projects/exemplo/deploy/aws/terraform`, que lê os outputs da instalação.
+    how: Cada módulo traz o seu Terraform em `deploy/terraform`, e a instalação os compõe em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Um projeto sobe os apps dele pelo `deploy/aws/terraform` do projeto de exemplo, que lê os outputs da instalação.
 
   - id: ecs-fargate
     name: AWS ECS Fargate
     quadrant: platforms
     ring: adopt
     what: Onde rodam os serviços e os workers em contêiner.
-    how: O Terraform de `projects/exemplo/deploy/aws/terraform` (`barte-ai-services/barte-ai-platform`) sobe o worker como serviço ECS no cluster da instalação.
+    how: O `deploy/aws/terraform` do projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`, sobe o worker como serviço ECS no cluster da instalação.
 
   - id: aurora-postgresql
     name: Aurora PostgreSQL Serverless v2
@@ -115,39 +115,53 @@ technologies:
     how: A credencial nunca fica no código; o pacote `packages/secrets` de `barte-ai-services/barte-ai-platform` a lê do cofre da nuvem. A chave KMS e o bucket vêm do Terraform da instalação.
 
   - id: lambda-api-gateway
-    name: AWS Lambda + API Gateway
+    name: AWS Lambda + entrada privada na VPC
     quadrant: platforms
     ring: adopt
-    what: O núcleo de um servidor MCP sem servidor.
-    how: Siga o núcleo do Backstage em `control-plane/backstage` de `barte-ai-services/infra`, com uma API HTTP com a rota `/mcp` e uma Lambda em Node 24 e arm64.
+    what: O núcleo de um servidor MCP sem servidor, sem endereço público.
+    how: A Lambda, em Node 24 e arm64, atende numa entrada privada da VPC, e o MCP confere em todo pedido o token do Identity Manager. Não abra uma API HTTP pública.
 
   - id: temporal
     name: Temporal (Workflow Manager)
     quadrant: platforms
     ring: adopt
-    what: Os processos duráveis, com espera, retentativa e aprovação humana.
-    how: Copie `projects/exemplo` de `barte-ai-services/barte-ai-platform`, que já traz o workflow, a activity e o worker ligados ao Workflow Manager (`barte-ai-services/loom`). Não suba um Temporal próprio.
+    what: O único orquestrador. Todo processo durável ou de carga alta, com espera, retentativa e aprovação humana, passa pelo Workflow Manager.
+    how: Copie o projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`, que já traz o workflow, a activity e o worker ligados ao Workflow Manager (`barte-ai-services/loom`). Não suba um Temporal próprio. O laço de um agente também é um workflow do Workflow Manager.
 
   - id: keycloak
     name: Keycloak (Identity Manager)
     quadrant: platforms
     ring: adopt
-    what: A identidade, o emissor OIDC da instalação.
-    how: Não suba um Keycloak próprio. O módulo do Identity Manager (`modules/tessera` em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`) é o emissor, e o compose de `projects/exemplo` o sobe localmente.
+    what: A identidade. O emissor OIDC de cada instalação e, no control plane, o dos serviços do time.
+    how: Não suba um Keycloak próprio. Numa instalação, o emissor é o módulo do Identity Manager (`modules/tessera` em `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`), e o compose do projeto de exemplo o sobe localmente. Os serviços do time, como o Backstage e os servidores MCP, usam o Identity Manager do control plane, que federa o Google Workspace da Barte.
+
+  - id: ai-gateway
+    name: AI gateway (LiteLLM)
+    quadrant: platforms
+    ring: adopt
+    what: A porta única para o modelo. Toda chamada a modelo de agente, bot ou worker sai por ele, e os modelos, o custo e as chaves ficam num lugar só.
+    how: Use o AI gateway do Guild, um por instalação. A imagem está em `deploy/ai-gateway`, e os módulos Terraform `model-access` e `ai-gateway` em `deploy/terraform/aws/modules`, de `barte-ai-services/guild`. O item recebe o endereço do gateway e uma chave de acesso a ele, e nenhuma permissão de provedor.
 
   - id: bedrock
     name: Amazon Bedrock (Claude)
     quadrant: platforms
     ring: adopt
-    what: Os modelos de linguagem que os workers e os agentes invocam.
-    how: O worker só invoca os modelos listados em `bedrock_model_ids`, no Terraform do Workflow Manager, então trocar de modelo é uma mudança de infraestrutura, e não uma variável de ambiente.
+    what: O provedor dos modelos de linguagem, atrás do AI gateway.
+    how: A credencial e a policy do Bedrock são do gateway, pelo módulo `ai-gateway` de `barte-ai-services/guild`. O item escolhe o modelo, e a chamada passa pelo gateway.
+
+  - id: outbound-integrations
+    name: Slack Socket Mode e fila do control plane
+    quadrant: platforms
+    ring: adopt
+    what: Como um evento de fora chega a um serviço da Barte, sempre por uma conexão de saída.
+    how: O Slack chega pelo Socket Mode, uma conexão que o worker abre para fora. O GitHub chega pela fila do control plane, onde a pipeline do repositório, com OIDC na AWS, põe um aviso que o worker lê.
 
   - id: floci
     name: Floci
     quadrant: tools
     ring: adopt
     what: O emulador local da AWS (S3, KMS, Secrets Manager, Bedrock e outros).
-    how: O compose de `projects/exemplo/deploy/compose` (`barte-ai-services/barte-ai-platform`) sobe o Floci e cria nele o que o Terraform criará na AWS.
+    how: O `deploy/compose` do projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`, sobe o Floci e cria nele o que o Terraform criará na AWS.
 
   - id: docker-multiarch
     name: Docker, imagens multi-arquitetura
@@ -161,7 +175,7 @@ technologies:
     name: GitHub Actions + workflows reutilizáveis
     quadrant: tools
     ring: adopt
-    what: O CI de todo repositório e os gates do pull request.
+    what: O CI de todo repositório e os gates do pull request. Não orquestra deploy nem apply.
     how: Comece pelo modelo `ci` desta organização (Actions › New workflow), que chama `tests`, `traceability`, `conventional-pr` e `handbook-check`. A review automática vem do modelo `argos`. Veja [Adoção](/how-we-work/adoption).
 
   - id: vitest
@@ -176,7 +190,7 @@ technologies:
     quadrant: tools
     ring: adopt
     what: Os testes de Python.
-    how: Configure em `[tool.pytest.ini_options]` no `pyproject.toml`, como em `projects/exemplo` de `barte-ai-services/barte-ai-platform`. O alvo do Makefile roda os testes, e o workflow `tests` chama o alvo.
+    how: Configure em `[tool.pytest.ini_options]` no `pyproject.toml`, como no projeto de exemplo, em `projects/` de `barte-ai-services/barte-ai-platform`. O alvo do Makefile roda os testes, e o workflow `tests` chama o alvo.
 
   - id: playwright
     name: Playwright
@@ -218,29 +232,29 @@ technologies:
     name: Celery
     quadrant: frameworks
     ring: trial
-    what: Hoje, só no Data Operator, nos workers de coleta.
-    how: Use dentro do Data Operator (`barte-ai-services/chronicle`). Fora dele, os processos duráveis vão para o Workflow Manager.
+    what: Só dentro do Data Operator, nos workers de coleta.
+    how: Use só dentro do Data Operator (`barte-ai-services/chronicle`). Fora dele, todo processo vai para o Workflow Manager.
 
   - id: airflow
     name: Apache Airflow
     quadrant: platforms
     ring: trial
-    what: Hoje, só no Data Operator, como agendador dos DAGs por provedor.
-    how: Vem pelo módulo do Data Operator, ligado em `chronicle_enabled` no `infra/aws/terraform` de `barte-ai-services/barte-ai-platform`. Fale com o time de plataforma antes de usar fora dele.
+    what: Só o paralelismo dentro de um pipeline de dados, no Data Operator.
+    how: Vem com o módulo do Data Operator (`barte-ai-services/chronicle`). Não use fora dele. Todo outro processo ou workflow é Temporal, pelo Workflow Manager.
 
   - id: cube
     name: Cube
     quadrant: platforms
     ring: trial
     what: Hoje, só no Data Operator, como a camada de consulta.
-    how: Use pelo Data Operator (`barte-ai-services/chronicle`). Fale com o time de plataforma antes de adotar fora dele.
+    how: As operações de dados e a análise passam pelo Data Operator (`barte-ai-services/chronicle`). Use o Cube por ele, e não suba um próprio.
 
   - id: arcadedb
     name: ArcadeDB
     quadrant: platforms
     ring: trial
-    what: Hoje, só no Data Operator, como o banco de grafo.
-    how: Use pelo Data Operator (`barte-ai-services/chronicle`). Fale com o time de plataforma antes de adotar fora dele.
+    what: O grafo dos dados, no Data Operator. É uma projeção dos vínculos do canônico (`silver.<entidade>_link`), nunca uma fonte.
+    how: Leia o grafo pelo Data Operator (`barte-ai-services/chronicle`), e não grave nele. A decisão está no ADR-0036 de `barte-ai-services/chronicle`.
 
   - id: envoy
     name: Envoy
@@ -260,16 +274,17 @@ technologies:
     name: mcpb (MCP bundles)
     quadrant: tools
     ring: trial
-    what: O empacotamento de um servidor MCP para instalar no cliente de IA.
+    what: O empacotamento de um servidor MCP para instalar no app de IA da pessoa.
     how: Fale com o time de plataforma antes de adotar.
 
-  # --- assess ----------------------------------------------------------------
   - id: cloudflare-workers-ai
     name: Cloudflare Workers AI
     quadrant: platforms
-    ring: assess
-    what: O decisor da review automática.
-    how: Só no workflow `argos` desta organização, que pergunta ao modelo de decisão o risco do pull request. Não use em projeto.
+    ring: trial
+    what: Só o decisor da review automática do Argos, no CI.
+    how: Só no workflow `argos` desta organização do GitHub, que pergunta ao modelo de decisão o risco do pull request. Não use em projeto. O modelo de um projeto vem pelo AI gateway.
+
+  # --- assess ----------------------------------------------------------------
 
   - id: storybook
     name: Storybook
@@ -315,6 +330,14 @@ technologies:
     what: A autenticação do Next.js na versão beta.
     how: Mantenha onde está e não adote em projeto novo. A identidade vem do Identity Manager.
 
+  - id: langgraph
+    name: LangGraph
+    quadrant: frameworks
+    ring: hold
+    what: Framework para o laço do agente.
+    how: Não use em código novo. O laço do agente é um workflow do Workflow Manager.
+    replaces: temporal
+
   - id: neo4j
     name: Neo4j
     quadrant: platforms
@@ -322,6 +345,62 @@ technologies:
     what: Banco de grafo substituído no Data Operator.
     how: Não use em código novo.
     replaces: arcadedb
+
+  - id: step-functions
+    name: AWS Step Functions
+    quadrant: platforms
+    ring: hold
+    what: Orquestração de processos na AWS.
+    how: Não use. Todo processo é um fluxo do Workflow Manager.
+    replaces: temporal
+
+  - id: eventbridge-scheduler
+    name: Amazon EventBridge Scheduler
+    quadrant: platforms
+    ring: hold
+    what: Tarefas agendadas na AWS.
+    how: Não use. O agendamento é um schedule do Workflow Manager.
+    replaces: temporal
+
+  - id: lambda-cron
+    name: Lambda em cron
+    quadrant: platforms
+    ring: hold
+    what: Uma função disparada por horário.
+    how: Não use. O agendamento é um schedule do Workflow Manager.
+    replaces: temporal
+
+  - id: cognito
+    name: Amazon Cognito
+    quadrant: platforms
+    ring: hold
+    what: Serviço de identidade da AWS.
+    how: Não use. A identidade vem do Identity Manager.
+    replaces: keycloak
+
+  - id: bedrock-runtime-direct
+    name: Chamada direta ao bedrock-runtime fora do gateway
+    quadrant: platforms
+    ring: hold
+    what: O código que chama o Bedrock sem passar pelo AI gateway.
+    how: Não use em código novo. Quem chama direto migra para o gateway.
+    replaces: ai-gateway
+
+  - id: inbound-webhooks
+    name: Webhooks de entrada
+    quadrant: platforms
+    ring: hold
+    what: Uma URL que recebe chamadas da internet.
+    how: Não abra. Nenhuma integração recebe chamada de fora.
+    replaces: outbound-integrations
+
+  - id: github-actions-deploy
+    name: GitHub Actions como orquestrador de deploy ou apply
+    quadrant: tools
+    ring: hold
+    what: Um workflow do GitHub Actions que cria, implanta ou aplica infraestrutura.
+    how: O deploy e o apply são um fluxo do Workflow Manager. O CI do pull request continua no GitHub Actions.
+    replaces: temporal
 
   - id: localstack
     name: LocalStack
@@ -342,10 +421,10 @@ technologies:
 drift:
   - name: TypeScript
     versions: "5.9, 6 e 7"
-    note: Três versões maiores convivem nos repositórios; a padronizar.
+    note: Três versões maiores convivem nos repositórios.
   - name: ESLint
     versions: "9 e 10"
-    note: Duas versões maiores convivem nos repositórios; a padronizar.
+    note: Duas versões maiores convivem nos repositórios.
   - name: Python
     versions: "3.12 a 3.14"
     note: O mínimo é 3.12.
@@ -354,10 +433,10 @@ drift:
     note: O padrão é o Node 24.
   - name: Next.js
     versions: "16.3 a 16.4"
-    note: Versões menores diferentes convivem; a padronizar.
+    note: Versões menores diferentes convivem.
   - name: Floci
     versions: "2.1 a 2.3"
-    note: Versões menores diferentes convivem; a padronizar.
+    note: Versões menores diferentes convivem.
   - name: Keycloak
     versions: "26.4 a 26.8"
-    note: Versões menores diferentes convivem; a padronizar.
+    note: Versões menores diferentes convivem.
