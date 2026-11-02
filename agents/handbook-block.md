@@ -9,7 +9,7 @@ Este repositório segue o [Barte AI Services Handbook](https://bookish-adventure
 - **O Loom é o único orquestrador.** Nada de Step Functions, cron em Lambda ou GitHub Actions como orquestrador.
 - **Dados passam pelo Data Operator; processos duráveis e de alta carga, e todo workflow, pelo Workflow Manager; Airflow só para paralelismo dentro de um pipeline de dados.**
 - **O Identity Manager é o único login.** Toda API e todo MCP valida o token dele.
-- **O `ci` e o `argos/verdict` são os checks obrigatórios.** Ligue o auto-merge ao abrir o PR (`gh pr merge <n> --auto --squash --delete-branch`); se o `ci` ficar vermelho, conserte.
+- **O `ci` é obrigatório, e o `argos/verdict` passa a ser, em rollout.** Ligue o auto-merge ao abrir o PR (`gh pr merge <n> --auto --squash --delete-branch`); se o `ci` ficar vermelho, conserte.
 - **A review é automática.** O Argos revisa; um PR com `argos:hold` espera uma pessoa. Enquanto o repositório não exige o `argos/verdict`, ponha `argos:hold` antes do `gh pr ready`.
 - **A documentação vai no PR**, escrita por um subagent de documentação.
 - **Segurança antes de meta.** Nada responde sem o login do Identity Manager na frente, integrações só de saída, executores efêmeros, escopo mínimo; mais acesso pede um ADR.
