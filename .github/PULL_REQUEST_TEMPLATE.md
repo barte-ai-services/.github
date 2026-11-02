@@ -2,8 +2,8 @@
 <!-- Resumo objetivo. O título é o commit do squash: Conventional Commits, em inglês, até 100 caracteres, sem ponto final. Tipos: feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert. -->
 
 ## Rastreabilidade
-Refs #
-<!-- Refs #<plano>: a sub-issue `plan` que este PR executa. O último PR do plano fecha o plano (Closes #<plano>), e o último PR do último plano fecha também a issue mãe (Closes #<mãe>). -->
+Closes #
+<!-- Num plano de mais de um PR: Refs #<plano> no lugar do Closes, a sub-issue `plan` que este PR executa. O último PR do plano fecha o plano (Closes #<plano>), e o último PR do último plano fecha também a issue mãe (Closes #<mãe>). -->
 
 ## Checklist
 <!-- O handbook: https://bookish-adventure-9ek13w4.pages.github.io/how-we-work/pull-requests/ -->
