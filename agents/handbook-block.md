@@ -10,9 +10,9 @@ Este repositório segue o [Barte AI Services Handbook](https://bookish-adventure
 - **Dados passam pelo Data Operator; processos duráveis e de alta carga, e todo workflow, pelo Workflow Manager; Airflow só para paralelismo dentro de um pipeline de dados.**
 - **O Identity Manager é o único login.** Toda API e todo MCP valida o token dele.
 - **O `ci` e o `argos/verdict` são os checks obrigatórios.** Ligue o auto-merge ao abrir o PR (`gh pr merge <n> --auto --squash --delete-branch`); se o `ci` ficar vermelho, conserte.
-- **A review é automática.** O Argos revisa; um PR com `argos:hold` espera uma pessoa. Enquanto o repositório não exige o `argos/verdict`, ponha `argos:hold` antes do `gh pr ready`: o cron `auto-merge.yml` da org faz o merge antes do Argos.
+- **A review é automática.** O Argos revisa; um PR com `argos:hold` espera uma pessoa. Enquanto o repositório não exige o `argos/verdict`, ponha `argos:hold` antes do `gh pr ready`.
 - **A documentação vai no PR**, escrita por um subagent de documentação.
-- **Segurança antes de meta.** Nada responde sem o login do Identity Manager na frente (o Backstage fica na internet, e a VPN não é o alvo), integrações só de saída, executores efêmeros, escopo mínimo; mais acesso pede um ADR.
+- **Segurança antes de meta.** Nada responde sem o login do Identity Manager na frente, integrações só de saída, executores efêmeros, escopo mínimo; mais acesso pede um ADR.
 - **«Organização», nunca «cliente»**, para a empresa que a Barte atende.
 - **O Backstage é a fonte dos nomes** de organização, projeto e repositório.
 - **Bastidores em inglês, pt-BR na tela.** Commits em Conventional Commits, em inglês.

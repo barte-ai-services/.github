@@ -8,4 +8,4 @@ contact_links:
     about: Como uma issue é escrita e o que ela carrega.
   - name: Reportar uma vulnerabilidade
     url: https://github.com/barte-ai-services/.github/security
-    about: Nunca numa issue pública. Use o reporte privado do GitHub no repositório afetado.
+    about: Nunca numa issue pública. Use o reporte privado do GitHub neste repositório; ele vale para qualquer sistema da Barte AI Services.

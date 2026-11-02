@@ -1,7 +1,7 @@
 name: ci
 
 # The pull request check of the engineering handbook (https://bookish-adventure-9ek13w4.pages.github.io/how-we-work/pull-requests/).
-# The `ci` job is the one required check of main, and it runs on every pull request, with no paths filter: a
+# The `ci` job is a required check of main, next to `argos/verdict`, and it runs on every pull request, with no paths filter: a
 # required check that a pull request never triggers leaves it waiting forever.
 #
 # Add the project's own build jobs to `needs` of the `ci` job.
