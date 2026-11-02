@@ -16,4 +16,4 @@ O workflow `docs-site` faz o build em todo pull request e publica no GitHub Page
 
 ## Licença
 
-As abas Especificações e Comunidade são adaptadas do Guardia Developer Hub, sob Apache-2.0. Veja o `NOTICE` na raiz.
+Proprietário, todos os direitos reservados. Veja o `LICENSE` na raiz.

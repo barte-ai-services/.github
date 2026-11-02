@@ -4,7 +4,7 @@
 # Este arquivo cobre o resto: size, status, qualidade/segurança e os defaults.
 # O sync roda com skip-delete=true: não remove labels fora deste arquivo
 # (labels de domínio ficam intactos por repo: platform:built-in/promoted/candidate,
-#  hyper-customization, client:<cliente>, blocked:client, proposal).
+#  hyper-customization, org:<slug>, blocked:org, proposal).
 
 # --- size (auto por linhas alteradas) ---
 - name: "size/XS"

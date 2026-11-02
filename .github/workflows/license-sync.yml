@@ -2,9 +2,9 @@ name: license-sync
 
 # Reusable: garante que o repo chamador tenha o LICENSE canônico da org.
 # LICENSE NÃO é herdado automaticamente pelo .github — por isso este sync.
-# NOTE: ler o LICENSE do repo .github (privado) exige um token com acesso à org.
+# NOTE: o passo lê o LICENSE do repo .github com um token com acesso à org.
 # O caller passa esse token como secret `ORG_TOKEN` (PAT ou GitHub App). Sem ele,
-# o passo é pulado com aviso. (O NOTICE é per-repo e NÃO é sincronizado aqui.)
+# o passo é pulado com aviso.
 
 on:
   workflow_call:
