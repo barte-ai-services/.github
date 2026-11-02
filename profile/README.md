@@ -43,6 +43,8 @@ regra nova — a operação fica mais inteligente a cada ciclo.
 
 **[Conheça a Barte →](https://barte.com)**
 
+<sub>Para o time: o [Barte AI Services Handbook](https://bookish-adventure-9ek13w4.pages.github.io/), só para membros da org.</sub>
+
 <sub>Barte Soluções de Pagamento LTDA</sub>
 
 </div>
