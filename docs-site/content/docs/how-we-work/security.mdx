@@ -3,20 +3,48 @@ title: Segurança antes de meta
 description: Menor exposição e menor raio de dano valem sobre qualquer meta ou conveniência.
 ---
 
-Segurança vem antes de meta, de prazo e de conveniência. Quando uma meta pede mais acesso, quem cede é a meta.
+Segurança vem antes de meta, de prazo e de conveniência. Entre dois desenhos que entregam o mesmo, vale o que expõe menos e o que limita mais o dano de uma invasão, mesmo que custe mais trabalho. Quando uma meta pede mais acesso, quem cede é a meta.
 
 ## Os princípios
 
-- **Nenhuma porta pública.** Um serviço da plataforma não se expõe à internet. Quem precisa chegar a ele chega por um caminho autenticado e privado.
-- **Integrações só de saída.** A plataforma busca o que precisa nos sistemas de fora. Um sistema de fora não abre conexão para dentro dela.
-- **Executores efêmeros, com o menor raio de dano.** Cada execução roda isolada, com credenciais de vida curta e acesso só ao que aquela execução precisa. Uma execução comprometida não alcança as outras.
-- **Escopo mínimo em produção.** Uma conta de produção tem só as permissões que o trabalho dela exige, e nada é concedido «por via das dúvidas».
-- **Nenhum segredo no código.** Segredos vivem no cofre de segredos do ambiente, nunca no repositório, num log ou num PR.
+- **Menor exposição.** Nenhum serviço tem porta de entrada pública. Quem precisa chegar a ele chega por uma entrada privada, autenticada pelo Identity Manager.
+- **Integrações só de saída.** Nenhuma integração recebe chamada da internet. O Slack entra por Socket Mode, uma conexão que o worker abre para fora, e o GitHub avisa por uma fila do control plane, e não por webhook.
+- **Executores efêmeros, uma conta cada.** Todo passo que toca uma conta roda numa tarefa que nasce para o passo e morre no fim, e assume a role de deploy de uma conta só. O worker de vida longa não alcança conta nenhuma. Production tem executor próprio, e o de staging tem negação explícita para qualquer conta de production.
+- **Escopo fechado em production.** A role de deploy de production lista só o que o Terraform da instalação toca. Nada é concedido «por via das dúvidas».
+- **Nenhum segredo de vida longa sai de onde está guardado.** Uma chave privada fica no Secrets Manager, e só uma função pequena a lê para emitir tokens de uma hora.
 
-## Abrir mais acesso pede um ADR
+## Exposição nova pede um ADR
 
-Um trabalho que precisa de mais exposição ou de mais permissão do que estes princípios permitem pede um ADR novo no repositório, com o motivo e o raio de dano. Sem o ADR, a resposta é não.
+Um trabalho que precisa de mais exposição ou de mais permissão do que estes princípios permitem pede um ADR no repositório, com o motivo e o raio de dano. Sem o ADR, a resposta é não.
+
+## As roles
+
+**Toda role IAM carrega uma permissions boundary.** A role de deploy nega criar role sem boundary, criar usuário ou chave, e mexer nas próprias roles e no state. O bootstrap de cada conta testa a boundary.
+
+## Os applies
+
+| Onde | Como |
+|---|---|
+| staging | Contínuo: cada commit da `main` que passa no `ci` se aplica sozinho. |
+| production das instalações | Com aprovação no environment `production` do GitHub, das pessoas nomeadas na configuração dos repositórios. |
+| O próprio Backstage | Contínuo. |
+
+## Os segredos e o acesso do CI
+
+- **Segredos ficam no Secrets Manager** da conta, e a configuração que não é segredo, no SSM Parameter Store. Nunca no repositório, num log ou num PR.
+- **O CI chega à AWS só por OIDC**, com credencial de minutos, e ao GitHub só por token de app. Nenhuma chave de longa duração fica num secret do GitHub.
+
+O detalhe está em [configuração e segredos](/specifications/configuration).
+
+## O scanning
+
+| Onde | O quê |
+|---|---|
+| Todo PR | O gitleaks roda dentro do `ci`, e um segredo deixa o `ci` vermelho. |
+| A organização | Secret scanning, push protection e o CodeQL no default setup, ligados para todos os repositórios. |
 
 ## Reportar uma vulnerabilidade
 
 Nunca numa issue pública. O caminho está em [segurança na comunidade](/community/security).
+
+<sub>Fonte: ADR-007 D1 a D6 do backstage, `infra/aws/bootstrap/boundary_test.py` do barte-ai-platform, seção B.14 e decisão 5 da barte-ai-services/.github#24.</sub>

@@ -1,0 +1,113 @@
+---
+title: Promoção para a plataforma
+description: O que nasce no projeto de uma organização escala para as outras, desde que não seja regra de negócio própria dela. Este é o processo canônico.
+---
+
+Todo código nasce no projeto de uma organização. As decisões tomadas nas primeiras organizações são avaliadas para escalar para os demais projetos, **desde que não sejam regra de negócio própria da organização**. O processo de análise, de candidata e de promoção abaixo é o canônico: não há outro caminho para o código subir para a plataforma.
+
+## O critério
+
+| A coisa é | Fica como | Onde |
+|---|---|---|
+| Regra de negócio própria da organização: o vocabulário, as regras e os números dela | Hipercustomização, com o label `hyper-customization` | No repositório da organização, `barte-ai-platform-<slug>`. Não sobe. |
+| Uma solução que serve a outra organização sem mudar, ou mudando só por configuração | Candidata, e depois promovida | No template, num módulo ou no Guild |
+
+O critério é quantas organizações o código serve sem mudar. O tamanho não conta. O que varia de uma organização para outra vira configuração com esquema; o que não cabe em configuração é regra de negócio, e fica.
+
+## Quem analisa e quem decide
+
+| Papel | Quem | Faz |
+|---|---|---|
+| Analisa | Quem constrói no projeto: os fdes e o AI Enabler da organização de origem, ou qualquer pessoa do time que encontra o segundo caso | Separa a regra de negócio do que é geral, marca a candidata e abre a issue de promoção no destino, com a evidência. |
+| Decide | O dono do repositório de destino, pelo `CODEOWNERS` | Aceita, pede ajuste ou recusa, com o motivo na issue. |
+| Executa | Quem assume a issue, pessoa ou agente | Os passos abaixo, em PRs revisados como qualquer outro. |
+
+## Os labels
+
+| Label | Onde | O que diz |
+|---|---|---|
+| `hyper-customization` | Nos repositórios das organizações e dos módulos | Customização: código derivado, que resolve uma organização. |
+| `platform:candidate` | Idem | Candidata à promoção: outra organização precisa. Soma-se a `hyper-customization`. |
+| `platform:promoted` | Idem | Capability promovida: veio de uma feature de organização, num par de PRs. Substitui as duas anteriores. |
+| `platform:built-in` | Idem | Capability de acervo: nasce canônica na plataforma, num PR só. |
+| `org:<slug>` | Em todo item que teve uma organização como origem | A organização de origem, inclusive num `platform:built-in`. |
+| `promotion` | No repositório de destino | A issue de promoção, com o título `[promotion] <o que sobe>`. |
+
+## De candidata a promovida
+
+<Steps>
+<Step>
+
+### A feature nasce no projeto
+
+Ela nasce em `projects/<project-slug>/`, com `hyper-customization` e `org:<slug>`. Só sobe código já usado numa organização.
+
+</Step>
+<Step>
+
+### O segundo caso
+
+Um segundo projeto ou organização precisa da mesma coisa. A feature ganha `platform:candidate`.
+
+</Step>
+<Step>
+
+### A issue de promoção no destino
+
+Uma issue `[promotion]`, com o label `promotion`, pelo formulário de promoção do destino. Ela traz:
+
+- **a origem**: o repositório, o caminho, a decisão e a issue de onde a feature vem;
+- **os dois casos**: as duas organizações ou projetos que precisam dela, e como cada um a usa;
+- **o destino**: onde ela passa a morar, e o que muda por configuração de uma organização para outra;
+- **as decisões que são do destino**, quando houver, para o dono decidir.
+
+</Step>
+<Step>
+
+### O dono decide
+
+Aceita, pede ajuste ou recusa. Uma recusa registra o motivo, e a feature continua como hipercustomização na origem.
+
+</Step>
+<Step>
+
+### Generalizar e mudar de casa
+
+Sai o que é da organização: o nome, o vocabulário, o dado e a credencial. O código vai com os testes, os contratos e as instruções para agentes. Uma decisão difícil de desfazer vira [ADR](/how-we-work/documentation) no destino.
+
+</Step>
+<Step>
+
+### O par de PRs
+
+Um PR no destino traz o código, e o destino lança uma versão. Um PR na origem adota essa versão e apaga a cópia. Com os dois no `main`, o item ganha `platform:promoted`.
+
+</Step>
+</Steps>
+
+O contrato que a organização vê não muda com a promoção: o mesmo endereço, as mesmas ferramentas, o mesmo login.
+
+Quando o problema já é de todas as organizações, o código nasce geral no destino, num PR só, com `platform:built-in`.
+
+## Para onde vai
+
+| A coisa é | Vai para |
+|---|---|
+| O esqueleto de todo repositório de organização: a instalação, os workflows, a forma de um projeto | O template `barte-ai-platform` |
+| Acesso a um sistema de terceiro | Um conector no Integration Gateway |
+| Dado, histórico, projeção ou ontologia | O Data Operator |
+| Processo durável, com espera e aprovação | O Workflow Manager |
+| Identidade, papel ou alcance | O Identity Manager |
+| A moldura e a navegação das telas | O Shell |
+| Agente, bot, worker, skill ou ferramenta que serve a mais de uma organização | O Guild |
+| Código que dois projetos da mesma organização compartilham | O `packages/` da raiz do repositório da organização, sem sair dele |
+
+## Um exemplo
+
+Um projeto de organização construiu um proxy de MCP: um endereço só, `/mcp`, que confere o token da pessoa, agrega as ferramentas de vários MCPs da instalação com prefixo e troca o token por upstream. Toda instalação com o Data Operator e o Integration Gateway tem mais de um MCP, então o problema é de todas. A issue `[promotion]` abriu no Guild: a origem com o caminho e o ADR do projeto, os dois casos, o destino como componente do Guild, com a imagem publicada por ele e um módulo de Terraform para a instalação, e o que varia por organização reduzido a um arquivo de configuração. As decisões de base ficaram com o dono do Guild.
+
+<Callout type="warn" title="A promoção não leva dado da organização">
+A issue cita repositório, caminho e arquivo, nunca número, nome ou trecho de documento de uma organização. O que sobe é código e configuração com esquema.
+</Callout>
+
+<sub>Fonte: decisão do Fernando de 02/11/2026 (barte-ai-services/.github#24), os labels de domínio de `.github/labels.yml` e dos repositórios barte-ai-platform, gatekeeper, chronicle e loom, `.github/ISSUE_TEMPLATE/promotion.yml` do barte-ai-platform, barte-ai-services/guild#45.</sub>
