@@ -1,18 +1,24 @@
 ---
 title: Pull requests
-description: O ci é o único check obrigatório, não há revisão humana obrigatória, e o PR entra sozinho quando fica verde.
+description: Só squash, o título é o commit, o ci é o único check obrigatório, e o PR entra sozinho quando fica verde.
 ---
 
 ## O que um pull request carrega
 
-- **O título em [Conventional Commits](/community/contributing)**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` ou `revert`, até 100 caracteres, sem ponto final. O título vira a mensagem do squash na `main`.
-- **A issue que ele fecha**, com `Closes #<n>` no corpo.
-- **A documentação da mudança**, no mesmo PR ([documentação](/how-we-work/documentation)).
+- **O título em Conventional Commits, em inglês**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` ou `revert`, até 100 caracteres, sem ponto final. O merge é só por squash, e o título vira o assunto do commit na `main`.
+- **A issue que ele fecha**, com `Closes #<n>` no corpo, e a [issue de plano](/how-we-work/issues#a-issue-de-plano) aprovada que ele executa.
+- **A documentação da mudança**, no mesmo PR, escrita pelo subagent de documentação ([documentação](/how-we-work/documentation)).
 - **Nenhum segredo**, e nenhum contrato quebrado sem estar documentado e versionado.
+
+## A branch
+
+A branch segue `<type>/<issue>-<slug>`, como `feat/42-supplier-import`: o tipo do Conventional Commits, o número da issue e um slug curto em inglês. Ela vive até o merge e sai junto com ele.
 
 ## Cada PR entra sozinho quando o `ci` passa
 
-- **O `ci` é o único check obrigatório da `main`.** O ruleset de cada repositório exige o `ci` e nada mais. Não há revisão humana obrigatória.
+- **Um job `ci` agregador é o único check obrigatório**, em todo repositório, template e repositórios das organizações incluídos. Ele depende de todos os outros jobs, e o ruleset exige só ele. Renomear ou acrescentar um job não mexe no ruleset.
+- **Não há revisão humana obrigatória.** A [review do Argos](/how-we-work/review) fica no lugar dela.
+- **Só squash.** Merge commit e rebase ficam desligados no repositório.
 - **O auto-merge fica ligado.** Logo depois de abrir o PR, ligue o auto-merge:
 
   ```bash
@@ -27,10 +33,28 @@ description: O ci é o único check obrigatório, não há revisão humana obrig
 
 O job `ci` roda em todo pull request, sem `paths`. Um check obrigatório que um PR nunca dispara deixa esse PR esperando para sempre.
 
+## O que roda dentro do `ci`
+
+| Job | O que confere |
+|---|---|
+| Os testes do repositório | Os tipos de teste de cada camada, pelo `make check` e pelos reutilizáveis |
+| `traceability` | Os critérios de aceite e os testes, nos dois sentidos |
+| `conventions` | O título do PR em Conventional Commits |
+| `handbook` | O bloco do handbook no `AGENTS.md` |
+| `gitleaks` | Nenhum segredo no que o PR traz |
+
+## Os workflows
+
+- **Todo `uses:` é fixado por SHA**, os 40 caracteres do commit, com a versão num comentário: `uses: actions/checkout@<sha> # v4`. Vale também para os workflows reutilizáveis da organização.
+- **O Dependabot roda toda semana, agrupado**, em todo repositório, e atualiza os SHAs junto com as dependências.
+- **O CI chega à AWS só por OIDC**, e ao GitHub só por token de app. Nenhuma chave de longa duração fica num secret.
+
 ## Pilhas de PRs
 
 Uma issue grande vira uma pilha de PRs, uma camada por PR, na ordem em que entram. O GitHub não aceita auto-merge num PR cuja base não é a `main`: cada camada entra quando a anterior entrou e a base dela passou a ser a `main`.
 
-## Exceções
+## A exceção
 
-Um repositório pode manter o merge manual quando a configuração da organização o marca assim, como o template de onde os projetos nascem. A exceção mora na configuração dos repositórios, não no PR.
+O template `barte-ai-platform` mantém o merge à espera de uma pessoa, porque cada repositório de organização nasce dele. A exceção mora na configuração dos repositórios, e não no PR.
+
+<sub>Fonte: decisões 1 e 5 da barte-ai-services/.github#24, seções B.10, B.11 e B.14 da barte-ai-services/.github#24, `workflow-templates/ci.yml` e `.github/workflows/auto-merge.yml` do barte-ai-services/.github.</sub>
