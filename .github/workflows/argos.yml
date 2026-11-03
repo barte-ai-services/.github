@@ -135,9 +135,56 @@ jobs:
           app-id: ${{ vars.ARGOS_APP_ID }}
           private-key: ${{ secrets.argos-app-private-key }}
 
+      # A head that differs from the last reviewed head only by a merge of the base (auto-merge.yml updates the
+      # branch of a PR behind main) inherits the opinion: the PR's diff against the base is the same, and a new
+      # review would only swap one opinion for another on the same code. Same diff means the same patch-id of
+      # `git diff --binary` against the base, with --verbatim: line numbers do not count, whitespace does, and a
+      # binary counts by its content. When inherited, the Argos step copies the opinion, and the comment and
+      # argos:hold stay as they are: an earlier hold stays, and so does an admin's lift after the opinion. Any
+      # doubt (no opinion, a reviewed commit the checkout lacks, a header it cannot read, a failure of this
+      # step) is a new review.
+      - name: o parecer herdado, quando o head só mescla a base
+        id: inherit
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ steps.app.outputs.app-slug && format('{0}[bot]', steps.app.outputs.app-slug) || 'github-actions[bot]' }}
+        run: |
+          set -euo pipefail
+          comment="$(gh api --paginate --slurp "repos/$REPO/issues/$PR/comments" \
+            | jq -r '[add[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- ahrena-review -->")))] | last | .body // empty')"
+          reviewed="$(grep -oE '^<sub>commit [0-9a-f]{40} · ' <<<"$comment" | tail -n1 | cut -d' ' -f2 || true)"
+          header="$(grep -m1 -E '^\*\*Verdict:\*\*' <<<"$comment" || true)"
+          verdict="$(sed -nE 's/^\*\*Verdict:\*\* *`([a-z_]+)`.*/\1/p' <<<"$header")"
+          decision="$(sed -nE 's/.*\*\*Decisor:\*\* *`([^`]+)`.*/\1/p' <<<"$header")"
+          blocking="$(grep -m1 -oE '\*\*[0-9]+\*\* bloqueantes' <<<"$comment" | tr -dc '0-9' || true)"
+          patch() { git diff --binary --no-color --no-ext-diff "$BASE...$1" | git patch-id --verbatim | cut -d' ' -f1; }
+          inherited=false
+          if [ -n "$reviewed" ] && [ "$reviewed" != "$HEAD" ] && [ -n "$verdict" ] && [ -n "$decision" ] \
+            && [ -n "$blocking" ] && git cat-file -e "$reviewed^{commit}" 2>/dev/null; then
+            before="$(patch "$reviewed")"
+            if [ -n "$before" ] && [ "$before" = "$(patch "$HEAD")" ]; then
+              inherited=true
+            fi
+          fi
+          {
+            echo "inherited=$inherited"
+            if [ "$inherited" = true ]; then
+              echo "reviewed=$reviewed"
+              echo "verdict=$verdict"
+              echo "decision=$decision"
+              echo "blocking=$blocking"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
       - name: o Argos lê o PR
         id: argos
         env:
+          INHERITED: ${{ steps.inherit.outputs.inherited }}
+          INHERITED_VERDICT: ${{ steps.inherit.outputs.verdict }}
+          INHERITED_DECISION: ${{ steps.inherit.outputs.decision }}
+          INHERITED_BLOCKING: ${{ steps.inherit.outputs.blocking }}
           CLAUDE_KEY: ${{ secrets.claude-token }}
           ARGOS_MODEL: ${{ inputs.model }}
           GH_TOKEN: ${{ github.token }}
@@ -147,6 +194,12 @@ jobs:
           DECISOR_REGRESSION_MAX: ${{ inputs.regression-max }}
           DECISOR_MAX_WARNINGS: ${{ inputs.max-warnings }}
         run: |
+          # The inherited opinion stands in for the review, so the steps below read one set of outputs.
+          if [ "$INHERITED" = true ]; then
+            { echo "verdict=$INHERITED_VERDICT"; echo "blocking=$INHERITED_BLOCKING"
+              echo "decision=$INHERITED_DECISION"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "$CLAUDE_KEY" ]; then
             echo "::error::sem token do Claude: o caller não passou claude-token, ou o secret de org não alcança este repo"
             exit 1
@@ -185,7 +238,9 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
       # Um comentário só por PR, editado a cada push: o marcador <!-- ahrena-review --> do runtime o acha.
+      # An inherited opinion leaves the comment as it is: its time is what an admin's lift is read against.
       - name: o parecer, no PR
+        if: steps.inherit.outputs.inherited != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           REPO: ${{ github.repository }}
@@ -215,7 +270,11 @@ jobs:
       # Este passo roda antes de o job terminar, e o check do Argos só fica verde no fim: o GitHub não tem
       # como mesclar entre os dois. Quando uma revisão seguinte libera, o label sai.
       - name: o argos:hold, quando o Argos não libera o merge
-        if: always() && steps.argos.conclusion != 'cancelled'
+        # An inherited opinion leaves the label as it is, held or lifted.
+        if: >-
+          always()
+          && steps.argos.conclusion != 'cancelled'
+          && steps.inherit.outputs.inherited != 'true'
         env:
           # O label vai com o token do job (pull-requests: write); desligar o auto-merge, com o do app, que
           # é quem o liga.
@@ -260,12 +319,19 @@ jobs:
           fi
 
       - name: o resumo
+        env:
+          INHERITED: ${{ steps.inherit.outputs.inherited }}
+          REVIEWED: ${{ steps.inherit.outputs.reviewed }}
         run: |
           {
             echo "### Argos"
             echo "verdict \`${{ steps.argos.outputs.verdict }}\` · ${{ steps.argos.outputs.blocking }} blocking · modo \`${{ inputs.mode }}\`"
             echo
             echo "Decisor: \`${{ steps.argos.outputs.decision }}\`"
+            if [ "$INHERITED" = true ]; then
+              echo
+              echo "Parecer herdado de \`$REVIEWED\`: o head só mescla a base, e o diff do PR contra ela é o mesmo."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: o check

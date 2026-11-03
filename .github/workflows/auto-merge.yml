@@ -11,6 +11,9 @@ name: auto-merge
 #   onde ele roda, e o label diz que ele segurou o PR. Onde o Argos não roda, este workflow segue ligando.
 # - Um PR atrás da main (BEHIND), num repo que exige a branch atualizada, tem a branch atualizada,
 #   para o CI rodar de novo e o auto-merge seguir.
+# - The update merges the base, never rebases: the reviewed commit stays in the branch, and the Argos
+#   reusable inherits its opinion when the PR's diff against the base is the same (#39), so the update
+#   re-adds no argos:hold.
 # - PR empilhado (stack) não aceita auto-merge no GitHub: é relatado e seguido adiante.
 #
 # Roda com o token do app de release (herald-barte), instalado em todos os repos, para o merge disparar
