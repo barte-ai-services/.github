@@ -1,7 +1,0 @@
-{
-  "title": "Como trabalhamos",
-  "description": "O caminho de uma mudança, do plano aprovado ao merge, e as regras que valem em todo projeto",
-  "root": true,
-  "icon": "Workflow",
-  "pages": ["index", "issues", "agency", "development-cycle", "promotion", "repositories", "delivery", "pull-requests", "review", "documentation", "challenge-driven", "security", "language", "naming", "agents", "adoption"]
-}

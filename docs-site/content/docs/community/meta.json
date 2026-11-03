@@ -1,7 +1,0 @@
-{
-  "title": "Comunidade",
-  "description": "O que é este handbook, como contribuir, conduta, governança, compliance e segurança",
-  "root": true,
-  "icon": "Users",
-  "pages": ["index", "contributing", "code-of-conduct", "governance", "compliance", "security"]
-}

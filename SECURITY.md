@@ -8,4 +8,4 @@ Não abra issue, pull request nem discussão pública. Use o reporte privado de 
 
 Inclua o componente afetado, o impacto, os passos para reproduzir e a versão ou o commit.
 
-A página completa: [segurança](https://barte-ai-services.github.io/.github/community/security/). Os princípios de segurança da engenharia: [segurança antes de meta](https://barte-ai-services.github.io/.github/how-we-work/security/).
+Para membros da org, a página completa: [segurança](https://bookish-adventure-9ek13w4.pages.github.io/community/security/). Os princípios de segurança da engenharia: [segurança antes de meta](https://bookish-adventure-9ek13w4.pages.github.io/how-we-work/security/).

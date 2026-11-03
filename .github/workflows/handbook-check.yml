@@ -2,7 +2,8 @@ name: handbook-check
 
 # Reusable: the repository carries the handbook block in its AGENTS.md, and the block is the current one.
 #
-# Every repository of the org follows the engineering handbook (https://barte-ai-services.github.io/.github/), and
+# Every repository of the org follows the Barte AI Services Handbook (https://bookish-adventure-9ek13w4.pages.github.io/, internal to the org, source in
+# barte-ai-services/ai-services-handbook), and
 # every AI working in it reads that from a managed block of its AGENTS.md, between the markers
 # `<!-- barte:handbook:start -->` and `<!-- barte:handbook:end -->`. The one source of the block is
 # agents/handbook-block.md in this repository; the Barte Forge copies it into each repository.

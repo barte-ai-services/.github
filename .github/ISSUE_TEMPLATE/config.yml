@@ -3,9 +3,9 @@
 # for this repository's own discussion or support channels.
 blank_issues_enabled: false
 contact_links:
-  - name: Handbook de engenharia da Barte
-    url: https://barte-ai-services.github.io/.github/how-we-work/issues/
+  - name: Barte AI Services Handbook (interno à org)
+    url: https://bookish-adventure-9ek13w4.pages.github.io/how-we-work/issues/
     about: Como uma issue é escrita e o que ela carrega.
   - name: Reportar uma vulnerabilidade
-    url: https://barte-ai-services.github.io/.github/community/security/
-    about: Nunca numa issue pública. Use o reporte privado do GitHub no repositório afetado.
+    url: https://github.com/barte-ai-services/.github/security
+    about: Nunca numa issue pública. Use o reporte privado do GitHub neste repositório; ele vale para qualquer sistema da Barte AI Services.
