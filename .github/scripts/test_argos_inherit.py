@@ -60,10 +60,16 @@ class Fixture:
         self.write("app.py", LINES.replace("line 15\n", "line 15 changed\n"))
         self.reviewed = self.commit("the PR's change")
         self.comments: list[dict[str, object]] = []
+        self.editors: list[str] = []
         bin_dir = root / "bin"
         bin_dir.mkdir()
         gh = bin_dir / "gh"
-        gh.write_text(f'#!/bin/sh\ncat "{root / "comments.json"}"\n')
+        # The comments for the REST call, the comment's edits for the GraphQL one.
+        gh.write_text(
+            "#!/bin/sh\n"
+            f'if [ "$2" = graphql ]; then cat "{root / "edits.json"}"; '
+            f'else cat "{root / "comments.json"}"; fi\n'
+        )
         gh.chmod(0o755)
         self.path = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
 
@@ -96,10 +102,13 @@ class Fixture:
         return self.git("rev-parse", "HEAD")
 
     def opinion(self, body: str, author: str = AUTHOR) -> None:
-        self.comments.append({"user": {"login": author}, "body": body})
+        self.comments.append({"user": {"login": author}, "body": body, "node_id": "IC_1"})
 
     def run(self, head: str) -> dict[str, str]:
         (self.root / "comments.json").write_text(json.dumps([self.comments]))
+        edits = [{"editor": {"login": login}} for login in self.editors]
+        node = {"author": {"login": "argos-by-ahrena"}, "userContentEdits": {"nodes": edits}}
+        (self.root / "edits.json").write_text(json.dumps([{"data": {"node": node}}]))
         output = self.root / "output"
         output.write_text("")
         env = {
@@ -148,6 +157,52 @@ class Inherit(unittest.TestCase):
         self.f.opinion(comment(self.f.reviewed))
         self.f.on_main("app.py", "new first line\n" + LINES)
         self.assertEqual(self.f.run(self.f.merge_main())["inherited"], "true")
+
+    def test_two_merges_of_the_base_in_a_row_still_inherit(self) -> None:
+        """#39/AC-1: the comment names the reviewed commit, and the cron may merge twice."""
+        self.f.opinion(comment(self.f.reviewed))
+        self.f.on_main()
+        self.f.merge_main()
+        self.f.on_main("third.txt", "third\n")
+        self.assertEqual(self.f.run(self.f.merge_main())["inherited"], "true")
+
+    def test_an_edit_by_the_app_alone_still_inherits(self) -> None:
+        """#39/AC-1: the app edits its comment on every review."""
+        self.f.editors = ["argos-by-ahrena", "argos-by-ahrena"]
+        self.f.opinion(comment(self.f.reviewed))
+        self.f.on_main()
+        self.assertEqual(self.f.run(self.f.merge_main())["inherited"], "true")
+
+    def test_a_comment_someone_else_edited_is_reviewed_again(self) -> None:
+        """#39/AC-2: write access edits any comment, so a forged approve is not inherited."""
+        self.f.editors = ["argos-by-ahrena", "someone"]
+        self.f.opinion(comment(self.f.reviewed))
+        self.f.on_main()
+        self.assertEqual(self.f.run(self.f.merge_main())["inherited"], "false")
+
+    def test_a_hand_resolved_merge_with_the_same_patch_id_is_reviewed_again(self) -> None:
+        """#39/AC-2: the same hunk moved elsewhere by the merge has the same patch-id."""
+        block = "pad\npad\npad\n    check()\npad\npad\npad\n"
+        self.f.git("checkout", "-q", "main")
+        self.f.write("app.py", block + block)
+        self.f.commit("two guarded blocks")
+        self.f.git("checkout", "-q", "pr")
+        self.f.git("reset", "-q", "--hard", "main")
+        self.f.write("app.py", block.replace("    check()\n", "") + block)
+        reviewed = self.f.commit("drop the first check")
+        self.f.opinion(comment(reviewed))
+        self.f.on_main()
+        self.f.git("merge", "-q", "--no-commit", "main")
+        self.f.write("app.py", block + block.replace("    check()\n", ""))
+        self.f.git("add", "-A")
+        self.f.git("commit", "-q", "--no-edit")
+        self.assertEqual(self.f.run(self.f.git("rev-parse", "HEAD"))["inherited"], "false")
+
+    def test_a_commit_that_is_not_a_merge_is_reviewed_again(self) -> None:
+        """#39/AC-2: an amend or a rebase with the same diff is not a merge of the base."""
+        self.f.opinion(comment(self.f.reviewed))
+        self.f.git("commit", "-q", "--amend", "--no-edit", "--date", "2020-01-01T00:00:00")
+        self.assertEqual(self.f.run(self.f.git("rev-parse", "HEAD"))["inherited"], "false")
 
     def test_a_new_change_after_the_review_is_reviewed_again(self) -> None:
         """#39/AC-2"""
@@ -222,6 +277,15 @@ class Workflow(unittest.TestCase):
         guard = "steps.inherit.outputs.inherited != 'true'"
         self.assertIn(guard, self.step("o parecer, no PR"))
         self.assertIn(guard, self.step("o argos:hold"))
+        self.assertIn(guard, self.step("o merge, quando"))
+
+    def test_only_the_app_comment_is_inherited(self) -> None:
+        """#39/AC-2: github-actions[bot] is any workflow of the repo."""
+        self.assertIn("if: steps.app.outputs.app-slug != ''", self.step("o parecer herdado"))
+
+    def test_the_summary_reads_the_opinion_from_the_environment(self) -> None:
+        """#39/AC-2: the decision comes from a comment, so it never enters the script."""
+        self.assertNotIn("${{ steps.argos.outputs", self.step("o resumo").split("run: |")[1])
 
 
 if __name__ == "__main__":

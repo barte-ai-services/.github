@@ -135,34 +135,68 @@ jobs:
           app-id: ${{ vars.ARGOS_APP_ID }}
           private-key: ${{ secrets.argos-app-private-key }}
 
-      # A head that differs from the last reviewed head only by a merge of the base (auto-merge.yml updates the
-      # branch of a PR behind main) inherits the opinion: the PR's diff against the base is the same, and a new
-      # review would only swap one opinion for another on the same code. Same diff means the same patch-id of
-      # `git diff --binary` against the base, with --verbatim: line numbers do not count, whitespace does, and a
-      # binary counts by its content. When inherited, the Argos step copies the opinion, and the comment and
-      # argos:hold stay as they are: an earlier hold stays, and so does an admin's lift after the opinion. Any
-      # doubt (no opinion, a reviewed commit the checkout lacks, a header it cannot read, a failure of this
-      # step) is a new review.
+      # A head that differs from the last reviewed head only by merges of the base (auto-merge.yml updates the
+      # branch of a PR behind main) inherits the opinion: a new review would only swap one opinion for another on
+      # the same code. "Only merges of the base" is checked commit by commit, from the head down the first
+      # parents to the reviewed commit: each is a merge whose second parent is in the base, and whose tree is the
+      # one `git merge-tree` writes for its parents, so no hand-made resolution rides along. On top, the PR's
+      # diff against the base keeps its patch-id (`git diff --binary`, --verbatim: line numbers do not count,
+      # whitespace does, a binary counts by its content), so a base change next to the PR's lines is reviewed.
+      # The opinion is read only from the app's comment, edited by no one but the app: write access edits any
+      # comment, and github-actions[bot] is any workflow of the repo. When inherited, the Argos step copies the
+      # opinion, and the comment, argos:hold and auto-merge stay as they are: an earlier hold stays, and so does
+      # an admin's lift after the opinion. The new head's checks are not read again: the ruleset's required
+      # checks hold the merge. Any doubt (no app, no opinion, an edited comment, a reviewed commit the checkout
+      # lacks, a header it cannot read, a failure of this step) is a new review.
       - name: o parecer herdado, quando o head só mescla a base
         id: inherit
+        if: steps.app.outputs.app-slug != ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          AUTHOR: ${{ steps.app.outputs.app-slug && format('{0}[bot]', steps.app.outputs.app-slug) || 'github-actions[bot]' }}
+          AUTHOR: ${{ format('{0}[bot]', steps.app.outputs.app-slug) }}
         run: |
           set -euo pipefail
-          comment="$(gh api --paginate --slurp "repos/$REPO/issues/$PR/comments" \
-            | jq -r '[add[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- ahrena-review -->")))] | last | .body // empty')"
+          found="$(gh api --paginate --slurp "repos/$REPO/issues/$PR/comments" \
+            | jq -c '[add[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- ahrena-review -->")))] | last // empty')"
+          comment="$(jq -r '.body // empty' <<<"${found:-null}")"
+          node="$(jq -r '.node_id // empty' <<<"${found:-null}")"
+          # Every edit, by the comment's author: the app edits it on every review.
+          edited_by_others=true
+          if [ -n "$node" ]; then
+            edited_by_others="$(gh api graphql --paginate --slurp -f id="$node" -f query='
+              query($id: ID!, $endCursor: String) { node(id: $id) { ... on IssueComment {
+                author { login }
+                userContentEdits(first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor } nodes { editor { login } } } } } }' \
+              | jq '[.[].data.node] | if any(. == null) then true
+                  else [.[] as $n | $n.userContentEdits.nodes[] | .editor.login != $n.author.login] | any end')"
+          fi
           reviewed="$(grep -oE '^<sub>commit [0-9a-f]{40} · ' <<<"$comment" | tail -n1 | cut -d' ' -f2 || true)"
           header="$(grep -m1 -E '^\*\*Verdict:\*\*' <<<"$comment" || true)"
           verdict="$(sed -nE 's/^\*\*Verdict:\*\* *`([a-z_]+)`.*/\1/p' <<<"$header")"
           decision="$(sed -nE 's/.*\*\*Decisor:\*\* *`([^`]+)`.*/\1/p' <<<"$header")"
           blocking="$(grep -m1 -oE '\*\*[0-9]+\*\* bloqueantes' <<<"$comment" | tr -dc '0-9' || true)"
+          # From the head down the first parents to the reviewed commit, only clean merges of the base.
+          merges_only() {
+            local commit="$HEAD" parents tree
+            for _ in $(seq 20); do
+              [ "$commit" = "$reviewed" ] && return 0
+              read -r -a parents <<<"$(git rev-list --parents -n1 "$commit")"
+              [ "${#parents[@]}" -eq 3 ] || return 1
+              git merge-base --is-ancestor "${parents[2]}" "$BASE" || return 1
+              tree="$(git merge-tree --write-tree "${parents[1]}" "${parents[2]}")" || return 1
+              [ "$tree" = "$(git rev-parse "$commit^{tree}")" ] || return 1
+              commit="${parents[1]}"
+            done
+            return 1
+          }
           patch() { git diff --binary --no-color --no-ext-diff "$BASE...$1" | git patch-id --verbatim | cut -d' ' -f1; }
           inherited=false
-          if [ -n "$reviewed" ] && [ "$reviewed" != "$HEAD" ] && [ -n "$verdict" ] && [ -n "$decision" ] \
-            && [ -n "$blocking" ] && git cat-file -e "$reviewed^{commit}" 2>/dev/null; then
+          if [ "$edited_by_others" = false ] && [ -n "$reviewed" ] && [ "$reviewed" != "$HEAD" ] \
+            && [ -n "$verdict" ] && [ -n "$decision" ] && [ -n "$blocking" ] \
+            && git cat-file -e "$reviewed^{commit}" 2>/dev/null && merges_only; then
             before="$(patch "$reviewed")"
             if [ -n "$before" ] && [ "$before" = "$(patch "$HEAD")" ]; then
               inherited=true
@@ -300,8 +334,10 @@ jobs:
           echo "o Argos segura o PR (verdict \`${VERDICT:-?}\`, decisor \`${DECISION:-?}\`): label $label" >> "$GITHUB_STEP_SUMMARY"
 
       - name: o merge, quando o Argos aprova e o Decisor diz auto_merge
+        # An inherited opinion leaves auto-merge as it is, like the hold: the label may be on the PR.
         if: >-
           inputs.auto-merge
+          && steps.inherit.outputs.inherited != 'true'
           && steps.argos.outputs.verdict == 'approve'
           && startsWith(steps.argos.outputs.decision, 'auto_merge')
         env:
@@ -322,12 +358,16 @@ jobs:
         env:
           INHERITED: ${{ steps.inherit.outputs.inherited }}
           REVIEWED: ${{ steps.inherit.outputs.reviewed }}
+          VERDICT: ${{ steps.argos.outputs.verdict }}
+          BLOCKING: ${{ steps.argos.outputs.blocking }}
+          DECISION: ${{ steps.argos.outputs.decision }}
+          MODE: ${{ inputs.mode }}
         run: |
           {
             echo "### Argos"
-            echo "verdict \`${{ steps.argos.outputs.verdict }}\` · ${{ steps.argos.outputs.blocking }} blocking · modo \`${{ inputs.mode }}\`"
+            echo "verdict \`$VERDICT\` · $BLOCKING blocking · modo \`$MODE\`"
             echo
-            echo "Decisor: \`${{ steps.argos.outputs.decision }}\`"
+            echo "Decisor: \`$DECISION\`"
             if [ "$INHERITED" = true ]; then
               echo
               echo "Parecer herdado de \`$REVIEWED\`: o head só mescla a base, e o diff do PR contra ela é o mesmo."
