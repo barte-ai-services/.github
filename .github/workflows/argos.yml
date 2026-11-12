@@ -124,8 +124,8 @@ jobs:
       group: argos-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: ${{ github.event.sender.login != 'argos-by-ahrena[bot]' }}
     env:
-      # ahrenatechnology/ahrena-agents v1.4.0, pelo digest: uma tag no registry pode ser movida.
-      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:9d31e5fae8f5fe882efcbcb544db2dba5e329ee77239a484c3458c2eab1e5c44
+      # ahrenatechnology/ahrena-agents v1.4.1, pelo digest: uma tag no registry pode ser movida.
+      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:06c59d9cb50eb6742a7178e2bbd73df0e648cbdeff64e927afbef92852aece7c
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
