@@ -53,10 +53,14 @@ gh() {
     "pr view"*"--json labels"*) echo "enhancement,ci";;
     "pr view"*"--json autoMergeRequest"*) echo "${AUTOMERGE:-false}";;
     "api --paginate repos/o/r/issues"*)
-      [ "${GH_TOKEN:-}" = "${DENY_READ:-none}" ] && return 1
+      # A token without Issues read lists pull requests only: nothing, and success.
+      [ "${GH_TOKEN:-}" = "${BLIND:-none}" ] && return 0
       [ -n "${KNOWN:-}" ] && printf '7\t%s\n' "$KNOWN";;
     "api repos/o/r/issues -f"*)
-      case " ${DENY_CREATE:-} " in *" ${GH_TOKEN:-} "*) return 1;; esac
+      # A failed gh api writes its error body to stdout, as the real one does.
+      case " ${DENY_CREATE:-} " in
+        *" ${GH_TOKEN:-} "*) echo '{"message":"Resource not accessible by integration","status":"403"}'; return 1;;
+      esac
       echo 42;;
     *) ;;
   esac
@@ -144,6 +148,28 @@ class FollowUps(unittest.TestCase):
         self.assertEqual(len(creates), 1)
         self.assertIn("- #7 · escopo `a.py`", self.listed())
 
+    def test_a_lookup_that_sees_nothing_does_not_hide_the_other_tokens(self) -> None:
+        """#45/AC-3: the app may list pull requests only; the job's token still finds the issue."""
+        self.run_step(
+            self.script, APP_TOKEN="app", JOB_TOKEN="job", BLIND="app", KNOWN=key("a.py", "escopo")
+        )
+        creates = [c for c in self.run_step.calls() if c.startswith("gh api repos/o/r/issues -f")]
+        self.assertEqual(len([c for c in creates if "escopo" in c]), 0)
+
+    def test_an_error_body_is_never_read_as_an_issue_number(self) -> None:
+        """#45/AC-2 #45/AC-4"""
+        self.run_step(self.script, APP_TOKEN="app", JOB_TOKEN="job", DENY_CREATE="app")
+        self.assertIn("- #42 · nome pouco claro", self.listed())
+        self.assertNotIn("message", self.listed())
+
+    def test_model_text_does_not_mention_anyone_or_break_the_line(self) -> None:
+        """#45/AC-2"""
+        loud = {"severity": "warning", "title": "avise @org/team\nlinha dois", "file": "x"}
+        (self.root / "review.json").write_text(json.dumps({"findings": [loud]}))
+        self.run_step(self.script, APP_TOKEN="app", JOB_TOKEN="job")
+        line = [entry for entry in self.listed().splitlines() if "avise" in entry][0]
+        self.assertIn("@\u200borg/team linha dois", line)
+
     def test_without_permission_the_warning_is_listed_and_the_step_passes(self) -> None:
         """#45/AC-4"""
         done = self.run_step(self.script, APP_TOKEN="app", JOB_TOKEN="job", DENY_CREATE="app job")
@@ -220,8 +246,12 @@ class Merge(unittest.TestCase):
 
     def test_the_erodos_pushes_with_the_apps_token_only(self) -> None:
         """#45/AC-7"""
-        self.assertIn("ARGOS_PUSH_TOKEN: ${{ steps.app.outputs.token }}", TEXT)
-        self.assertIn("ARGOS_FIX: ${{ inputs.fix && steps.app.outputs.token != '' }}", TEXT)
+        self.assertIn("ARGOS_PUSH_TOKEN: ${{ steps.push.outputs.token }}", TEXT)
+        self.assertIn("ARGOS_FIX: ${{ inputs.fix && steps.push.outputs.token != '' }}", TEXT)
+        push = TEXT[TEXT.index("        id: push\n") :]
+        push = push[: push.index("\n\n")]
+        self.assertIn("permission-contents: write", push)
+        self.assertIn("repositories: ${{ github.event.repository.name }}", push)
 
 
 if __name__ == "__main__":

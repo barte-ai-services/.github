@@ -48,7 +48,7 @@ name: argos
 #   on:
 #     pull_request:
 #       types: [opened, synchronize, reopened, ready_for_review]
-#   permissions:
+#   permissions:     # obrigatório e explícito: o reusable herda o que o caller dá
 #     contents: read
 #     pull-requests: write
 #     issues: write   # os follow-ups, enquanto o app do Argos não tem Issues: write
@@ -100,9 +100,11 @@ on:
         description: "O token da Cloudflare, com escopo Workers AI, com que o Decisor pergunta ao Clef."
         required: false
 
-# Sem permissions aqui: o job herda as do caller, que nunca podem ser menos que contents: read e
-# pull-requests: write. Um caller que dá issues: write abre os follow-ups com o github.token; um reusable que
-# pedisse issues: write derrubaria todo caller que não a dá.
+# Sem permissions aqui: o job herda as do caller. Um caller que dá issues: write abre os follow-ups com o
+# github.token; um reusable que pedisse issues: write derrubaria todo caller que não a dá. Por isso o caller
+# tem de declarar um bloco permissions explícito, com contents: read, pull-requests: write e, se quiser os
+# follow-ups, issues: write, como o template: sem ele, o job herdaria o token padrão do repositório, que vai
+# para o contêiner do Argos como GH_TOKEN.
 
 jobs:
   review:
@@ -143,6 +145,20 @@ jobs:
         with:
           app-id: ${{ vars.ARGOS_APP_ID }}
           private-key: ${{ secrets.argos-app-private-key }}
+
+      # The Erodos's push gets a token of its own: contents: write on this repository only. The app's
+      # full token (pull requests, the hold, the opinion) never enters the container where the model reads
+      # the PR.
+      - name: o token do push do Erodos, só com escrita no conteúdo deste repositório
+        id: push
+        if: steps.app.outputs.token != '' && inputs.fix
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ARGOS_APP_ID }}
+          private-key: ${{ secrets.argos-app-private-key }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
 
       # A head that differs from the last reviewed head only by merges of the base (auto-merge.yml updates the
       # branch of a PR behind main) inherits the opinion: a new review would only swap one opinion for another on
@@ -234,9 +250,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare-api-token }}
           # The Erodos pushes only with the app's token: a push by the github.token would not start the new review.
-          ARGOS_FIX: ${{ inputs.fix && steps.app.outputs.token != '' }}
+          ARGOS_FIX: ${{ inputs.fix && steps.push.outputs.token != '' }}
           ARGOS_MAX_ROUNDS: ${{ inputs.max-rounds }}
-          ARGOS_PUSH_TOKEN: ${{ steps.app.outputs.token }}
+          ARGOS_PUSH_TOKEN: ${{ steps.push.outputs.token }}
         run: |
           # The inherited opinion stands in for the review, so the steps below read one set of outputs.
           if [ "$INHERITED" = true ]; then
@@ -312,28 +328,43 @@ jobs:
           : > "$out"
           jq -c '.findings[]? | select(.severity == "warning")' "$RUNNER_TEMP/review.json" > "$RUNNER_TEMP/warnings.jsonl"
           [ -s "$RUNNER_TEMP/warnings.jsonl" ] || exit 0
-          # Each call with the app's token first, then the job's: whichever can do it.
+          # One call with the app's token first, then the job's. The output is kept only from the call that
+          # succeeded: a failed `gh api` writes its error body to stdout, and that is never an answer.
           as_any() {
-            local token
+            local token answer
             for token in "$APP_TOKEN" "$JOB_TOKEN"; do
               [ -n "$token" ] || continue
-              GH_TOKEN="$token" "$@" && { used="$token"; return 0; }
+              if answer="$(GH_TOKEN="$token" "$@" 2>/dev/null)"; then
+                used="$token"
+                printf '%s' "$answer"
+                return 0
+              fi
             done
             return 1
           }
+          # Model text goes into an issue and a comment: one line, and no @mention that notifies anyone.
+          plain() { tr '\r\n' '  ' | sed -e 's/@/@\xe2\x80\x8b/g' -e 's/ *$//'; }
           # The PR's labels, without the ones that belong to the PR itself (size, status, the hold).
+          used=""
           labels="$(as_any gh pr view "$PR" -R "$REPO" --json labels \
-            --jq '[.labels[].name | select(test("^(size/|status: |argos:)") | not)] | join(",")' 2>/dev/null || true)"
-          # Every issue of this repository that names this PR in a follow-up marker, opened or closed.
+            --jq '[.labels[].name | select(test("^(size/|status: |argos:)") | not)] | join(",")' || true)"
+          # Every issue of this repository that names this PR in a follow-up marker, opened or closed, read
+          # with every token: a token without Issues read lists pull requests only, and finds nothing.
           # Only issues touched since the PR was opened: a follow-up of this PR is never older than it.
-          as_any gh api --paginate "repos/$REPO/issues?state=all&per_page=100&since=$PR_CREATED" \
-            --jq ".[] | select(.pull_request == null) | select(.body // \"\" | contains(\"<!-- argos-follow-up pr=$PR \")) | [.number, (.body | capture(\"key=(?<k>[0-9a-f]{12})\").k)] | @tsv" \
-            > "$RUNNER_TEMP/existing.tsv" 2>/dev/null || : > "$RUNNER_TEMP/existing.tsv"
+          : > "$RUNNER_TEMP/existing.tsv"
+          for token in "$APP_TOKEN" "$JOB_TOKEN"; do
+            [ -n "$token" ] || continue
+            GH_TOKEN="$token" gh api --paginate "repos/$REPO/issues?state=all&per_page=100&since=$PR_CREATED" \
+              --jq ".[] | select(.pull_request == null) | select(.body // \"\" | contains(\"<!-- argos-follow-up pr=$PR \")) | [.number, ((.body | capture(\"key=(?<k>[0-9a-f]{12})\") | .k) // \"\")] | @tsv" \
+              > "$RUNNER_TEMP/lookup.tsv" 2>/dev/null || continue
+            # Only number<TAB>key lines: a failed call left its error body here, never a row.
+            grep -E "^[0-9]+$(printf '\t')" "$RUNNER_TEMP/lookup.tsv" >> "$RUNNER_TEMP/existing.tsv" || true
+          done
           echo "### Follow-ups" >> "$out"
           echo >> "$out"
           while IFS= read -r w; do
-            title="$(jq -r '.title' <<<"$w")"
-            file="$(jq -r '.file // ""' <<<"$w")"
+            title="$(jq -r '.title' <<<"$w" | plain)"
+            file="$(jq -r '.file // ""' <<<"$w" | plain)"
             line="$(jq -r '.line // ""' <<<"$w")"
             where="${file:+\`$file${line:+:$line}\`}"
             key="$(printf '%s\n%s' "$file" "$title" | sha256sum | cut -c1-12)"
@@ -349,16 +380,16 @@ jobs:
               echo
               echo "**Achado:** $title"
               [ -n "$where" ] && echo "**Onde:** $where"
-              echo "**Tipo:** $(jq -r '.kind // "—"' <<<"$w") · **Regra:** $(jq -r '.rule // "—"' <<<"$w")"
+              echo "**Tipo:** $(jq -r '.kind // "—"' <<<"$w" | plain) · **Regra:** $(jq -r '.rule // "—"' <<<"$w" | plain)"
               echo
               echo "Aberto pelo Argos, a partir do parecer publicado no PR."
             } > "$body"
             # Not in a subshell: `used` keeps the token that opened the issue, for the labels and the type.
             used=""
             as_any gh api "repos/$REPO/issues" -f title="Follow-up de #$PR: ${title:0:180}" \
-              -F body=@"$body" --jq .number > "$RUNNER_TEMP/number" 2>/dev/null || : > "$RUNNER_TEMP/number"
+              -F body=@"$body" --jq .number > "$RUNNER_TEMP/number" || : > "$RUNNER_TEMP/number"
             number="$(cat "$RUNNER_TEMP/number")"
-            if [ -z "$number" ]; then
+            if ! [[ "$number" =~ ^[0-9]+$ ]]; then
               echo "- não aberto (sem permissão para abrir issue) · $title ${where}" >> "$out"
               continue
             fi
