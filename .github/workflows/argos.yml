@@ -13,15 +13,25 @@ name: argos
 # como antes e o comentário diz que o parecer não considera o CI. O reusable não pede as duas permissões:
 # um reusable que pede mais do que o caller dá derruba o workflow.
 #
-# Depois da review, o Decisor pergunta ao Clef (o modelo de decisão do Workers AI, @cf/cloudflare/clef) o
-# risco, a chance de regressão e a de o PR poder entrar sem humano, e aplica os limiares: a decisão é
-# auto_merge ou hold_for_human, com as probabilidades, e vai no parecer.
+# Quem decide o merge é o parecer do Argos, e não o Decisor (decisão do Fernando de 12/11/2026, em
+# barte-ai-services/.github#45):
+#   - approve com 0 bloqueantes e warnings: o Erodos faz uma rodada de autofix dos warnings mecânicos
+#     (kind como), num commit que o app empurra para a branch do PR. Esse commit dispara o CI e uma nova
+#     revisão, e é ela que decide;
+#   - approve com 0 bloqueantes, sem warnings ou depois da rodada: cada warning que sobrou vira uma issue de
+#     follow-up no repositório do PR, ligada a ele, e o auto-merge é ligado. Não há hold;
+#   - qualquer outro parecer (bloqueante, request_changes, comment, o Argos que não rodou): argos:hold.
+# O Decisor ainda pergunta ao Clef o risco e as probabilidades, e a resposta vai no parecer, só como
+# informação.
 #
-# Quando o Argos aprova e o Decisor diz auto_merge, o reusable liga o auto-merge (squash) do PR com o token do
-# app do Argos: o GitHub faz o merge quando os checks obrigatórios do ruleset passam, e não antes. O token tem
-# de ser o do app, e não o github.token: um merge feito pelo github.token não dispara os workflows da main.
-# Num repo com o auto-merge desligado (o template), ou sem o app, o passo avisa e o PR espera um
-# humano. Para desligar num repo, o caller passa auto-merge: false. O app precisa de Contents: write.
+# O auto-merge (squash) é ligado com o token do app do Argos: o GitHub faz o merge quando os checks
+# obrigatórios do ruleset passam, e não antes. O token tem de ser o do app, e não o github.token: um merge
+# feito pelo github.token não dispara os workflows da main, e um push dele (o do Erodos) não dispararia a nova
+# revisão. Num repo com o auto-merge desligado (o template), ou sem o app, o passo avisa e o PR espera um
+# humano. Para desligar num repo, o caller passa auto-merge: false; para desligar o autofix, fix: false. O app
+# precisa de Contents: write e Pull requests: write. Os follow-ups saem com o token do app quando ele tem
+# Issues: write; senão, com o github.token, quando o caller dá issues: write; senão, ficam listados no parecer
+# e o merge segue igual. O hold, quando existe, é aplicado e removido pelo app.
 #
 # Precisa da variable de org CLOUDFLARE_ACCOUNT_ID e do secret CLOUDFLARE_API_TOKEN (escopo Workers AI).
 # Sem eles, ou com o Clef fora, a decisão é hold_for_human, e a review sai do mesmo jeito.
@@ -38,9 +48,10 @@ name: argos
 #   on:
 #     pull_request:
 #       types: [opened, synchronize, reopened, ready_for_review]
-#   permissions:
+#   permissions:     # obrigatório e explícito: o reusable herda o que o caller dá
 #     contents: read
 #     pull-requests: write
+#     issues: write   # os follow-ups, enquanto o app do Argos não tem Issues: write
 #     checks: read
 #     statuses: read
 #   jobs:
@@ -67,19 +78,15 @@ on:
         type: string
         default: ""
       auto-merge:
-        description: "Liga o auto-merge do PR quando o Argos aprova e o Decisor diz auto_merge."
+        description: "Liga o auto-merge do PR quando o Argos aprova com 0 bloqueantes."
         type: boolean
         default: true
-      auto-merge-min:
-        description: "Decisor: probabilidade mínima de auto_merge (0 a 1). Vazio: o default do ahrena-agents (0.85)."
-        type: string
-        default: ""
-      regression-max:
-        description: "Decisor: probabilidade máxima de regressão tolerada (0 a 1). Vazio: o default (0.15)."
-        type: string
-        default: ""
-      max-warnings:
-        description: "Decisor: acima de tantos warnings, segura para humano sem perguntar ao Clef. Vazio: o default (2)."
+      fix:
+        description: "O Erodos faz uma rodada de autofix dos warnings de um approve, e corrige o mecânico de um PR segurado."
+        type: boolean
+        default: true
+      max-rounds:
+        description: "Rodadas do Erodos num PR segurado (bloqueante, checagem vermelha). Vazio: o default do ahrena-agents (2)."
         type: string
         default: ""
     secrets:
@@ -93,9 +100,11 @@ on:
         description: "O token da Cloudflare, com escopo Workers AI, com que o Decisor pergunta ao Clef."
         required: false
 
-permissions:
-  contents: read
-  pull-requests: write
+# Sem permissions aqui: o job herda as do caller. Um caller que dá issues: write abre os follow-ups com o
+# github.token; um reusable que pedisse issues: write derrubaria todo caller que não a dá. Por isso o caller
+# tem de declarar um bloco permissions explícito, com contents: read, pull-requests: write e, se quiser os
+# follow-ups, issues: write, como o template: sem ele, o job herdaria o token padrão do repositório, que vai
+# para o contêiner do Argos como GH_TOKEN.
 
 jobs:
   review:
@@ -109,12 +118,14 @@ jobs:
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A new push supersedes the review of the previous one, except the Erodos's own push: it lands while the
+    # run that made it still posts the opinion, so the new review waits for it instead of cancelling it.
     concurrency:
       group: argos-${{ github.repository }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event.sender.login != 'argos-by-ahrena[bot]' }}
     env:
-      # ahrenatechnology/ahrena-agents v1.3.0, pelo digest: uma tag no registry pode ser movida.
-      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:850bba6d1023ede86ed6891412b4ed3f0caa7da80807279ad076eec745b30b9c
+      # ahrenatechnology/ahrena-agents v1.4.0, pelo digest: uma tag no registry pode ser movida.
+      ARGOS_IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:9d31e5fae8f5fe882efcbcb544db2dba5e329ee77239a484c3458c2eab1e5c44
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
@@ -134,6 +145,20 @@ jobs:
         with:
           app-id: ${{ vars.ARGOS_APP_ID }}
           private-key: ${{ secrets.argos-app-private-key }}
+
+      # The Erodos's push gets a token of its own: contents: write on this repository only. The app's
+      # full token (pull requests, the hold, the opinion) never enters the container where the model reads
+      # the PR.
+      - name: o token do push do Erodos, só com escrita no conteúdo deste repositório
+        id: push
+        if: steps.app.outputs.token != '' && inputs.fix
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ARGOS_APP_ID }}
+          private-key: ${{ secrets.argos-app-private-key }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
 
       # A head that differs from the last reviewed head only by merges of the base (auto-merge.yml updates the
       # branch of a PR behind main) inherits the opinion: a new review would only swap one opinion for another on
@@ -224,9 +249,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.cloudflare-api-token }}
-          DECISOR_AUTO_MERGE_MIN: ${{ inputs.auto-merge-min }}
-          DECISOR_REGRESSION_MAX: ${{ inputs.regression-max }}
-          DECISOR_MAX_WARNINGS: ${{ inputs.max-warnings }}
+          # The Erodos pushes only with the app's token: a push by the github.token would not start the new review.
+          ARGOS_FIX: ${{ inputs.fix && steps.push.outputs.token != '' }}
+          ARGOS_MAX_ROUNDS: ${{ inputs.max-rounds }}
+          ARGOS_PUSH_TOKEN: ${{ steps.push.outputs.token }}
         run: |
           # The inherited opinion stands in for the review, so the steps below read one set of outputs.
           if [ "$INHERITED" = true ]; then
@@ -248,11 +274,14 @@ jobs:
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
           # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
           set +e
+          # The event goes in read-only: the runtime reads from it whether the head is of this repository and
+          # its branch, which is where the Erodos pushes.
           docker run --rm \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
-            -e DECISOR_AUTO_MERGE_MIN -e DECISOR_REGRESSION_MAX -e DECISOR_MAX_WARNINGS \
-            -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_API_URL \
+            -e ARGOS_FIX -e ARGOS_MAX_ROUNDS -e ARGOS_PUSH_TOKEN \
+            -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_API_URL -e GITHUB_SERVER_URL \
+            -v "$GITHUB_EVENT_PATH:/github/event.json:ro" -e GITHUB_EVENT_PATH=/github/event.json \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
             -v "$PWD:/repo" -w /repo \
             "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \
@@ -270,6 +299,108 @@ jobs:
           echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
           decision=$(jq -r '.decision // "hold_for_human: sem decisor"' "$RUNNER_TEMP/review.json" | head -n1)
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          # The Erodos pushed a commit: the review of that commit decides, not this one.
+          fixed=$(jq -r 'if .fixCommit then "true" else "false" end' "$RUNNER_TEMP/review.json")
+          echo "fixed=$fixed" >> "$GITHUB_OUTPUT"
+
+      # Approve with 0 blockers releases the merge, and every warning left becomes a follow-up issue in the PR's
+      # repository, linked to the PR by its body. One issue per warning: a warning that already has an issue for
+      # this PR (the marker in the body, by the same file and title) is not opened again on a later review. The
+      # app's token first; while the app has no Issues: write, the github.token, when the caller gives
+      # issues: write. When neither can open it, the warning stays listed in the opinion, and the merge goes on.
+      - name: os follow-ups, quando o Argos aprova com warnings
+        id: followups
+        if: >-
+          steps.inherit.outputs.inherited != 'true'
+          && steps.argos.outputs.verdict == 'approve'
+          && steps.argos.outputs.blocking == '0'
+          && steps.argos.outputs.fixed != 'true'
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          JOB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_CREATED: ${{ github.event.pull_request.created_at }}
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/followups.md"
+          : > "$out"
+          jq -c '.findings[]? | select(.severity == "warning")' "$RUNNER_TEMP/review.json" > "$RUNNER_TEMP/warnings.jsonl"
+          [ -s "$RUNNER_TEMP/warnings.jsonl" ] || exit 0
+          # One call with the app's token first, then the job's. The output is kept only from the call that
+          # succeeded: a failed `gh api` writes its error body to stdout, and that is never an answer.
+          as_any() {
+            local token answer
+            for token in "$APP_TOKEN" "$JOB_TOKEN"; do
+              [ -n "$token" ] || continue
+              if answer="$(GH_TOKEN="$token" "$@" 2>/dev/null)"; then
+                used="$token"
+                printf '%s' "$answer"
+                return 0
+              fi
+            done
+            return 1
+          }
+          # Model text goes into an issue and a comment: one line, and no @mention that notifies anyone.
+          plain() { tr '\r\n' '  ' | sed -e 's/@/@\xe2\x80\x8b/g' -e 's/ *$//'; }
+          # The PR's labels, without the ones that belong to the PR itself (size, status, the hold).
+          used=""
+          labels="$(as_any gh pr view "$PR" -R "$REPO" --json labels \
+            --jq '[.labels[].name | select(test("^(size/|status: |argos:)") | not)] | join(",")' || true)"
+          # Every issue of this repository that names this PR in a follow-up marker, opened or closed, read
+          # with every token: a token without Issues read lists pull requests only, and finds nothing.
+          # Only issues touched since the PR was opened: a follow-up of this PR is never older than it.
+          : > "$RUNNER_TEMP/existing.tsv"
+          for token in "$APP_TOKEN" "$JOB_TOKEN"; do
+            [ -n "$token" ] || continue
+            GH_TOKEN="$token" gh api --paginate "repos/$REPO/issues?state=all&per_page=100&since=$PR_CREATED" \
+              --jq ".[] | select(.pull_request == null) | select(.body // \"\" | contains(\"<!-- argos-follow-up pr=$PR \")) | [.number, ((.body | capture(\"key=(?<k>[0-9a-f]{12})\") | .k) // \"\")] | @tsv" \
+              > "$RUNNER_TEMP/lookup.tsv" 2>/dev/null || continue
+            # Only number<TAB>key lines: a failed call left its error body here, never a row.
+            grep -E "^[0-9]+$(printf '\t')" "$RUNNER_TEMP/lookup.tsv" >> "$RUNNER_TEMP/existing.tsv" || true
+          done
+          echo "### Follow-ups" >> "$out"
+          echo >> "$out"
+          while IFS= read -r w; do
+            title="$(jq -r '.title' <<<"$w" | plain)"
+            file="$(jq -r '.file // ""' <<<"$w" | plain)"
+            line="$(jq -r '.line // ""' <<<"$w")"
+            where="${file:+\`$file${line:+:$line}\`}"
+            key="$(printf '%s\n%s' "$file" "$title" | sha256sum | cut -c1-12)"
+            known="$(awk -F'\t' -v k="$key" '$2 == k {print $1; exit}' "$RUNNER_TEMP/existing.tsv")"
+            if [ -n "$known" ]; then
+              echo "- #$known · $title ${where}" >> "$out"
+              continue
+            fi
+            body="$RUNNER_TEMP/followup-$key.md"
+            {
+              echo "<!-- argos-follow-up pr=$PR key=$key -->"
+              echo "Follow-up de #$PR ($PR_URL): um warning que o Argos levantou no parecer do commit $HEAD, que aprovou o PR com 0 bloqueantes. O PR entrou, e este achado fica para cá."
+              echo
+              echo "**Achado:** $title"
+              [ -n "$where" ] && echo "**Onde:** $where"
+              echo "**Tipo:** $(jq -r '.kind // "—"' <<<"$w" | plain) · **Regra:** $(jq -r '.rule // "—"' <<<"$w" | plain)"
+              echo
+              echo "Aberto pelo Argos, a partir do parecer publicado no PR."
+            } > "$body"
+            # Not in a subshell: `used` keeps the token that opened the issue, for the labels and the type.
+            used=""
+            as_any gh api "repos/$REPO/issues" -f title="Follow-up de #$PR: ${title:0:180}" \
+              -F body=@"$body" --jq .number > "$RUNNER_TEMP/number" || : > "$RUNNER_TEMP/number"
+            number="$(cat "$RUNNER_TEMP/number")"
+            if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+              echo "- não aberto (sem permissão para abrir issue) · $title ${where}" >> "$out"
+              continue
+            fi
+            # Labels and the issue type are best effort: the issue already exists and is linked.
+            if [ -n "$labels" ]; then
+              GH_TOKEN="$used" gh issue edit "$number" -R "$REPO" --add-label "$labels" >/dev/null 2>&1 || true
+            fi
+            GH_TOKEN="$used" gh api -X PATCH "repos/$REPO/issues/$number" -f type=Task >/dev/null 2>&1 || true
+            echo "- #$number · $title ${where}" >> "$out"
+          done < "$RUNNER_TEMP/warnings.jsonl"
+          echo "list=$out" >> "$GITHUB_OUTPUT"
 
       # Um comentário só por PR, editado a cada push: o marcador <!-- ahrena-review --> do runtime o acha.
       # An inherited opinion leaves the comment as it is: its time is what an admin's lift is read against.
@@ -281,12 +412,16 @@ jobs:
           # Quem publica edita só o comentário que é seu: editar um comentário não muda o autor, e o parecer
           # tem de sair com a cara de quem o escreveu.
           AUTHOR: ${{ steps.app.outputs.app-slug && format('{0}[bot]', steps.app.outputs.app-slug) || 'github-actions[bot]' }}
+          FOLLOWUPS: ${{ steps.followups.outputs.list }}
         run: |
           body="$RUNNER_TEMP/comment.md"
           jq -r '.comment // empty' "$RUNNER_TEMP/review.json" > "$body"
           if [ ! -s "$body" ]; then
             { echo "<!-- ahrena-review -->"; echo "**Argos** · verdict \`${{ steps.argos.outputs.verdict }}\`"; echo
               jq -r '.summary // "(sem parecer)"' "$RUNNER_TEMP/review.json"; } > "$body"
+          fi
+          if [ -n "$FOLLOWUPS" ] && [ -s "$FOLLOWUPS" ]; then
+            { echo; cat "$FOLLOWUPS"; } >> "$body"
           fi
           printf '\n<sub>commit %s · modo %s</sub>\n' "$HEAD" "${{ inputs.mode }}" >> "$body"
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
@@ -297,12 +432,12 @@ jobs:
             gh pr comment "$PR" -R "$REPO" --body-file "$body"
           fi
 
-      # O Argos é quem decide o merge. Quando ele não libera (qualquer coisa que não seja approve com o
-      # Decisor dizendo auto_merge: um bloqueante, warnings acima do corte, uma checagem vermelha, um fix
-      # do Erodos ainda por revisar, ou o Argos que não rodou), o PR ganha o label argos:hold e o auto-merge
-      # sai, se alguém o tinha ligado. O auto-merge.yml da org não liga o auto-merge num PR com esse label.
-      # Este passo roda antes de o job terminar, e o check do Argos só fica verde no fim: o GitHub não tem
-      # como mesclar entre os dois. Quando uma revisão seguinte libera, o label sai.
+      # O Argos é quem decide o merge, pelo parecer, e não o Decisor. approve com 0 bloqueantes libera: o label
+      # sai. Qualquer outro parecer (um bloqueante, request_changes, comment, uma checagem vermelha, o Argos que
+      # não rodou) segura: o PR ganha o label argos:hold e o auto-merge sai, se alguém o tinha ligado. O
+      # auto-merge.yml da org não liga o auto-merge num PR com esse label. Quando o Erodos empurrou um commit
+      # num approve, a revisão desse commit decide, e o label fica como está. Este passo roda antes de o job
+      # terminar, e o check do Argos só fica verde no fim: o GitHub não tem como mesclar entre os dois.
       - name: o argos:hold, quando o Argos não libera o merge
         # An inherited opinion leaves the label as it is, held or lifted.
         if: >-
@@ -310,16 +445,20 @@ jobs:
           && steps.argos.conclusion != 'cancelled'
           && steps.inherit.outputs.inherited != 'true'
         env:
-          # O label vai com o token do job (pull-requests: write); desligar o auto-merge, com o do app, que
-          # é quem o liga.
-          GH_TOKEN: ${{ github.token }}
-          MERGE_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          # O próprio Argos aplica e remove o hold: o token do app, e o do job só onde a org não tem o app.
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           REPO: ${{ github.repository }}
           VERDICT: ${{ steps.argos.outputs.verdict }}
+          BLOCKING: ${{ steps.argos.outputs.blocking }}
+          FIXED: ${{ steps.argos.outputs.fixed }}
           DECISION: ${{ steps.argos.outputs.decision }}
         run: |
           label="argos:hold"
-          if [ "$VERDICT" = approve ] && [[ "$DECISION" == auto_merge* ]]; then
+          if [ "$VERDICT" = approve ] && [ "$BLOCKING" = 0 ]; then
+            if [ "$FIXED" = true ]; then
+              echo "o Erodos empurrou um commit: a revisão dele decide" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
             gh pr edit "$PR" -R "$REPO" --remove-label "$label" >/dev/null 2>&1 || true
             echo "o Argos libera o merge" >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -328,24 +467,25 @@ jobs:
             --description "O Argos segurou o PR: o auto-merge fica desligado até uma revisão aprovar" >/dev/null 2>&1 || true
           gh pr edit "$PR" -R "$REPO" --add-label "$label" >/dev/null
           if [ "$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
-            GH_TOKEN="$MERGE_TOKEN" gh pr merge "$PR" -R "$REPO" --disable-auto >/dev/null
+            gh pr merge "$PR" -R "$REPO" --disable-auto >/dev/null
             echo "auto-merge desligado" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "o Argos segura o PR (verdict \`${VERDICT:-?}\`, decisor \`${DECISION:-?}\`): label $label" >> "$GITHUB_STEP_SUMMARY"
+          echo "o Argos segura o PR (verdict \`${VERDICT:-?}\`, ${BLOCKING:-?} bloqueante(s), decisor \`${DECISION:-?}\`): label $label" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: o merge, quando o Argos aprova e o Decisor diz auto_merge
+      - name: o merge, quando o Argos aprova com 0 bloqueantes
         # An inherited opinion leaves auto-merge as it is, like the hold: the label may be on the PR.
         if: >-
           inputs.auto-merge
           && steps.inherit.outputs.inherited != 'true'
           && steps.argos.outputs.verdict == 'approve'
-          && startsWith(steps.argos.outputs.decision, 'auto_merge')
+          && steps.argos.outputs.blocking == '0'
+          && steps.argos.outputs.fixed != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::o Decisor diz auto_merge, mas o app do Argos não deu token: o PR espera um humano"
+            echo "::warning::o Argos aprova, mas o app do Argos não deu token: o PR espera um humano"
             exit 0
           fi
           if gh pr merge "$PR" -R "$REPO" --squash --auto --match-head-commit "$HEAD" 2> "$RUNNER_TEMP/merge.err"; then
@@ -367,7 +507,7 @@ jobs:
             echo "### Argos"
             echo "verdict \`$VERDICT\` · $BLOCKING blocking · modo \`$MODE\`"
             echo
-            echo "Decisor: \`$DECISION\`"
+            echo "Decisor (informação, não segura o merge): \`$DECISION\`"
             if [ "$INHERITED" = true ]; then
               echo
               echo "Parecer herdado de \`$REVIEWED\`: o head só mescla a base, e o diff do PR contra ela é o mesmo."
