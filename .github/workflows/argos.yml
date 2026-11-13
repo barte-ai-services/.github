@@ -76,16 +76,20 @@ name: argos
 #       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
 #       secrets:
 #         claude-token: ...    # como acima
-#         ARGOS_APP_PRIVATE_KEY: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}   # o do environment
 #       with:
 #         environment: argos
-# O job `review` passa a rodar nesse environment e lê dele o secret ARGOS_APP_PRIVATE_KEY. Um secret de
+# O caller não passa nada sob o nome ARGOS_APP_PRIVATE_KEY. O job `review` passa a rodar nesse environment e
+# lê dele o secret ARGOS_APP_PRIVATE_KEY. Um secret de
 # environment só chega ao job que declara o `environment`, e o caller não pode usar essa palavra num job que
 # chama um reusable, por isso o environment é um input. O nome de um secret do GitHub (de environment, de repo
 # ou de org) só tem letras, números e sublinhado, sem hífen, por isso este leva outro nome que o
 # `argos-app-private-key`; o caller declara o secret pelo nome, como manda a doc dos reusables. Com o input
-# `environment`, só o secret ARGOS_APP_PRIVATE_KEY é lido (o do environment), e o `argos-app-private-key` é
-# ignorado; um secret do environment vazio não cai na chave do caller. Sem o input, só o `argos-app-private-key`
+# `environment`, só o secret ARGOS_APP_PRIVATE_KEY é lido, e só do environment que o job declara (o caller não
+# deve passar esse nome: um caller não declara `environment`, então o valor viria do secret de repo ou de org), e
+# o `argos-app-private-key` é ignorado; um secret do environment vazio não cai na chave do caller. Ressalva: se
+# o secret do environment não chegar ao reusable sem um repasse do caller (a verificar no caller do Backstage,
+# barte-ai-services/backstage#489), o repositório não pode ver nenhum secret de repo ou de org chamado
+# ARGOS_APP_PRIVATE_KEY, ou a garantia de «sem fallback» não vale. Sem o input, só o `argos-app-private-key`
 # é lido, o job não declara environment e roda como sempre.
 # A chave entra só nos dois passos create-github-app-token (e no booleano HAS_APP_KEY), em nenhum outro
 # passo nem no contêiner do Argos.
@@ -132,7 +136,7 @@ on:
         description: "A chave do app argos-by-ahrena. Sem ela, o parecer sai como github-actions[bot]."
         required: false
       ARGOS_APP_PRIVATE_KEY:
-        description: "A mesma chave, pelo nome que um secret de environment pode ter. Lida só com o input environment preenchido, e então é a única chave lida; sem o input, vale só o argos-app-private-key."
+        description: "A mesma chave, pelo nome que um secret de environment pode ter. Lida só do environment que o job declara, com o input environment preenchido, e então é a única chave lida; o caller não deve passar esse nome (passar viraria um secret de repo ou de org, fora do environment). Sem o input, vale só o argos-app-private-key."
         required: false
       cloudflare-api-token:
         description: "O token da Cloudflare, com escopo Workers AI, com que o Decisor pergunta ao Clef."
