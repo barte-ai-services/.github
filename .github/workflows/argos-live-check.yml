@@ -1,0 +1,22 @@
+name: argos-live-check
+
+# Throwaway (barte-ai-services/.github#50): proves that the reusable with no `environment` input runs a job
+# bound to no environment. Read-only token and no real secret: the Argos step is expected to fail without a
+# Claude token, and it can write nothing. This file never reaches main.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  argos:
+    uses: ./.github/workflows/argos.yml
+    with:
+      auto-merge: false
+      fix: false
+    secrets:
+      claude-token: live-check-no-token
