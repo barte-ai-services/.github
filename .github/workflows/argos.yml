@@ -65,6 +65,34 @@ name: argos
 # Os secrets vão pelo nome, e não por `secrets: inherit`: o reusable recebe só os três que usa. O token do
 # Claude é o secret de org BARTE_ARGOS_CLAUDE_TOKEN (claude setup-token), visível aos repos privados;
 # enquanto ele não existe, vale o BARTE_HAROLD_CLAUDE_TOKEN.
+#
+# Modo pull_request_target + environment (barte-ai-services/.github#50): para um repo cujo secret do app do
+# Argos mora num environment, e não na org. O caller troca o gatilho e passa o nome do environment:
+#   on:
+#     pull_request_target:
+#       types: [opened, synchronize, reopened, ready_for_review]
+#   jobs:
+#     argos:
+#       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
+#       secrets:
+#         claude-token: ...    # como acima
+#         ARGOS_APP_PRIVATE_KEY: ${{ secrets.ARGOS_APP_PRIVATE_KEY }}   # vazio no repo; o do environment vence
+#       with:
+#         environment: argos
+# O job `review` passa a rodar nesse environment e lê dele o secret ARGOS_APP_PRIVATE_KEY. Um secret de
+# environment só chega ao job que declara o `environment`, e o caller não pode usar essa palavra num job que
+# chama um reusable, por isso o environment é um input. O nome do secret não leva hífen (um nome de secret de
+# environment não pode), e o caller declara o secret pelo nome, como manda a doc dos reusables: com o mesmo nome
+# do secret do repo ou da org, o do environment vence. O `argos-app-private-key` continua valendo, e tem a
+# precedência; sem o input `environment`, o job não declara environment e roda como sempre.
+# A chave entra só nos dois passos create-github-app-token (e no booleano HAS_APP_KEY), em nenhum outro
+# passo nem no contêiner do Argos.
+#
+# Por que o guarda de fork importa aqui: sob pull_request_target, o workflow roda no contexto da base e
+# recebe os secrets, mesmo para um PR de fork. Sem o guarda `head.repo.full_name == github.repository`, o PR
+# de um fork rodaria com a chave do app. Com ele, o job é pulado. Sob pull_request_target, `github.sha` é o
+# commit da base, e não o do PR: o job faz o checkout de `github.event.pull_request.head.sha` com
+# persist-credentials: false e só lê o que baixou, nunca executa nada dele. Mantenha assim.
 
 on:
   workflow_call:
@@ -89,12 +117,19 @@ on:
         description: "Rodadas do Erodos num PR segurado (bloqueante, checagem vermelha). Vazio: o default do ahrena-agents (2)."
         type: string
         default: ""
+      environment:
+        description: "O environment em que o job roda e de que lê o secret ARGOS_APP_PRIVATE_KEY. Vazio: o job não declara environment."
+        type: string
+        default: ""
     secrets:
       claude-token:
         description: "O token do Claude Code (claude setup-token) com que o Argos roda."
         required: true
       argos-app-private-key:
         description: "A chave do app argos-by-ahrena. Sem ela, o parecer sai como github-actions[bot]."
+        required: false
+      ARGOS_APP_PRIVATE_KEY:
+        description: "A mesma chave, pelo nome que um secret de environment pode ter. O caller passa o do repo (vazio, se ele só existe no environment): com o input environment, o do environment vence."
         required: false
       cloudflare-api-token:
         description: "O token da Cloudflare, com escopo Workers AI, com que o Decisor pergunta ao Clef."
@@ -110,12 +145,16 @@ jobs:
   review:
     name: argos
     # Rascunho ainda não está pronto para ler, o Dependabot já tem o próprio check, e um PR de fork não recebe
-    # os secrets (e o Argos nunca lê o checkout de um fork com credencial).
+    # os secrets (e o Argos nunca lê o checkout de um fork com credencial). Sob pull_request_target o fork
+    # receberia os secrets, por isso o guarda de fork é o que segura esse modo.
     if: >-
-      github.event_name == 'pull_request'
+      (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
       && !github.event.pull_request.draft
       && github.event.pull_request.user.login != 'dependabot[bot]'
       && github.event.pull_request.head.repo.full_name == github.repository
+    # Vazio, o input vira null e o job não declara environment. A doc não diz o que um environment vazio faz;
+    # null é o valor de uma expressão que deixa o campo sem valor.
+    environment: ${{ inputs.environment || null }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # A new push supersedes the review of the previous one, except the Erodos's own push: it lands while the
@@ -129,7 +168,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
       HEAD: ${{ github.event.pull_request.head.sha }}
-      HAS_APP_KEY: ${{ secrets.argos-app-private-key != '' }}
+      HAS_APP_KEY: ${{ (secrets.argos-app-private-key || secrets.ARGOS_APP_PRIVATE_KEY) != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,7 +183,7 @@ jobs:
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.ARGOS_APP_ID }}
-          private-key: ${{ secrets.argos-app-private-key }}
+          private-key: ${{ secrets.argos-app-private-key || secrets.ARGOS_APP_PRIVATE_KEY }}
 
       # The Erodos's push gets a token of its own: contents: write on this repository only. The app's
       # full token (pull requests, the hold, the opinion) never enters the container where the model reads
@@ -156,7 +195,7 @@ jobs:
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.ARGOS_APP_ID }}
-          private-key: ${{ secrets.argos-app-private-key }}
+          private-key: ${{ secrets.argos-app-private-key || secrets.ARGOS_APP_PRIVATE_KEY }}
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
 
