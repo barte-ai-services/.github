@@ -30,9 +30,20 @@ TEXT = WORKFLOW.read_text(encoding="utf-8")
 MANAGED_PATH = "/etc/claude-code/managed-settings.json"
 SHA = "a" * 40
 OUTPUT_KEYS = {"verdict", "blocking", "decision", "fixed"}
+RUN_OPEN = "        run: |"
+BODY_INDENT = " " * 10
+
+# The head's Claude Code project configuration (#50): settings, MCP servers, personal memory.
+HEAD_CONFIG_TRACKED = [".claude/settings.json", ".claude/agents/x.md", ".mcp.json"]
+HEAD_CONFIG_UNTRACKED = [".claude/settings.local.json", "CLAUDE.local.md"]
+HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
+
+# Managed deny rules (#50): the job's environment, the managed file, and the tools the runtime never grants.
+TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
+DENIED = ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"]
 
 # Keys the head's `.claude/settings.json` could use to run a command or reach a server, and that the
-# managed file closes. Each was confirmed against Claude Code 2.1.296, the one in the pinned image.
+# managed file closes (#50). Each was confirmed against Claude Code 2.1.296, the one in the pinned image.
 CLOSED = {
     "disableAllHooks": True,
     "allowManagedHooksOnly": True,
@@ -50,31 +61,26 @@ CLOSED = {
 }
 
 
+def _indented_body(lines: list[str]) -> str:
+    """The script that opens at lines[0]: every line indented ten spaces, up to the first that is not."""
+    body = []
+    for line in lines:
+        if line and not line.startswith(BODY_INDENT):
+            break
+        body.append(line[len(BODY_INDENT) :])
+    return "\n".join(body) + "\n"
+
+
 def run_blocks() -> list[tuple[int, str]]:
     """Every `run: |` script of the workflow, with the line it starts on."""
     lines = TEXT.splitlines()
-    blocks = []
-    for at, line in enumerate(lines):
-        if line == "        run: |":
-            body = []
-            for inner in lines[at + 1 :]:
-                if inner and not inner.startswith(" " * 10):
-                    break
-                body.append(inner[10:])
-            blocks.append((at + 1, "\n".join(body) + "\n"))
-    return blocks
+    return [(at + 1, _indented_body(lines[at + 1 :])) for at, line in enumerate(lines) if line == RUN_OPEN]
 
 
 def step_script(step_id: str) -> str:
     """The run script of the step with this id."""
-    at = TEXT[TEXT.index(f"        id: {step_id}\n") :]
-    block = at[at.index("        run: |\n") + len("        run: |\n") :]
-    lines = []
-    for line in block.splitlines():
-        if line and not line.startswith(" " * 10):
-            break
-        lines.append(line[10:])
-    return "\n".join(lines) + "\n"
+    after_id = TEXT[TEXT.index(f"        id: {step_id}\n") :]
+    return _indented_body(after_id[after_id.index(RUN_OPEN + "\n") + len(RUN_OPEN) + 1 :].splitlines())
 
 
 def header() -> str:
@@ -91,10 +97,8 @@ class StaticChecks(unittest.TestCase):
     def test_no_run_block_reads_a_step_output_by_expression(self) -> None:
         """#51/AC-1: the verdict, the blocking count, the decision and the fixed flag go in by env."""
         for line, script in run_blocks():
-            self.assertIsNone(
-                re.search(r"steps\.(argos|inherit)\.outputs", script),
-                f"the run block at line {line} names a step output",
-            )
+            for step in ("argos", "inherit"):
+                self.assertNotIn(f"steps.{step}.outputs", script, f"the run block at line {line} names a step output")
 
     def test_the_container_reads_managed_settings_read_only(self) -> None:
         """#50: the head cannot switch its own hooks and MCP servers back on."""
@@ -112,12 +116,41 @@ class StaticChecks(unittest.TestCase):
         self.assertIn("managed-settings", header())
 
     def test_permission_rules_are_not_locked_to_managed(self) -> None:
-        """allowManagedPermissionRulesOnly ignores the --allowedTools allow rules the runtime passes (the
-        Bash rules of the commands a project declares), and the head's own permission rules do not widen
-        anything in dontAsk mode; the key would turn a feature off and close nothing."""
+        """allowManagedPermissionRulesOnly would drop the Edit and Write grants the Erodos runs with, and the
+        Bash rules of the commands a project declares (#50): the head's rules are kept away by removing the
+        head's `.claude/` from the copy, and the managed deny rules close the rest."""
         heredoc = TEXT[TEXT.index("<<'MANAGED'") : TEXT.index("\n          MANAGED\n")]
         self.assertIn("disableAllHooks", heredoc)
         self.assertNotIn("allowManagedPermissionRulesOnly", heredoc)
+
+
+    def test_the_head_s_project_config_is_removed_on_the_host_before_the_container(self) -> None:
+        """#50: removed from the copy, skip-worktree so the Erodos does not commit the removal, and the host
+        runs git on the copy only before the container starts."""
+        script = step_script("argos")
+        before, after = script.split("docker run", 1)
+        self.assertIn("update-index --skip-worktree", before)
+        self.assertIn('ls-files -z -- .claude .mcp.json CLAUDE.local.md', before)
+        self.assertIn('rm -rf "$repo_copy/.claude" "$repo_copy/.mcp.json" "$repo_copy/CLAUDE.local.md"', before)
+        self.assertNotIn('git -C "$repo_copy"', after, "no git on the copy after the container ran")
+        self.assertNotIn("git ", after.split('"$ARGOS_IMAGE"', 1)[1].split("review.log", 1)[0])
+
+    def test_the_header_states_what_the_head_reaches_and_what_it_does_not(self) -> None:
+        """#50: the claims that the head's rules widen nothing, and that the rest only closes in the runtime,
+        were false, and the header names the real mechanism, the trade-off and the root fix."""
+        text = header()
+        self.assertNotIn("alargam nada", text)
+        self.assertNotIn("só se fecha no runtime", text)
+        self.assertNotIn("widen nothing", step_script("argos"))
+        for needle in ("skip-worktree", "CLAUDE.local.md", "settingSources", "allowManagedPermissionRulesOnly"):
+            self.assertIn(needle, text)
+
+    def test_the_managed_file_denies_what_the_model_must_not_read_or_run(self) -> None:
+        """#50: the reads that reach the job's tokens, and the tools the runtime never grants."""
+        heredoc = TEXT[TEXT.index("<<'MANAGED'") : TEXT.index("\n          MANAGED\n")]
+        for rule in DENIED:
+            self.assertIn(f'"{rule}"', heredoc)
+        self.assertIn('"disableBypassPermissionsMode": "disable"', heredoc)
 
 
 class Workspace:
@@ -132,17 +165,33 @@ class Workspace:
         for args in (["init", "-q", "-b", "main"], ["config", "user.email", "t@example.com"], ["config", "user.name", "t"]):
             subprocess.run(["git", *args], cwd=self.workspace, check=True, capture_output=True)
         (self.workspace / "app.py").write_text("print('hi')\n")
+        (self.workspace / "CLAUDE.md").write_text("# project notes\n")
+        for name in HEAD_CONFIG_TRACKED:
+            (self.workspace / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.workspace / name).write_text("{}\n")
         subprocess.run(["git", "add", "-A"], cwd=self.workspace, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=self.workspace, check=True, capture_output=True)
+        for name in HEAD_CONFIG_UNTRACKED:
+            (self.workspace / name).write_text("{}\n")
         bin_dir = root / "bin"
         bin_dir.mkdir()
         docker = bin_dir / "docker"
-        # Logs the arguments, snapshots what the /repo mount holds, and prints the fixed review.
+        # Logs the arguments, snapshots what the /repo mount holds (#50), and prints the fixed review.
         docker.write_text(
             "#!/bin/bash\n"
             'printf \'%s\\n\' "$@" > "$DOCKER_ARGS"\n'
             'for a in "$@"; do case "$a" in *:/repo) src="${a%:/repo}"\n'
-            '  { ls -A "$src"; git -C "$src" rev-parse HEAD; } > "$DOCKER_ARGS.repo" 2>&1;; esac; done\n'
+            '  { ls -A "$src"; git -C "$src" rev-parse HEAD; } > "$DOCKER_ARGS.repo" 2>&1\n'
+            '  git -C "$src" status --porcelain > "$DOCKER_ARGS.status" 2>&1\n'
+            '  if [ -n "$FAKE_ERODOS" ]; then\n'
+            '    git -C "$src" checkout --quiet --detach "$HEAD"\n'
+            '    echo "print(2)" >> "$src/app.py"\n'
+            '    git -C "$src" add --all\n'
+            '    git -C "$src" -c user.name=e -c user.email=e@example.com commit --quiet --no-verify -m fix\n'
+            '    git -C "$src" show --name-status --format= HEAD > "$DOCKER_ARGS.commit" 2>&1\n'
+            '    ls -A "$src" > "$DOCKER_ARGS.after"\n'
+            '    git -C "$src" status --porcelain > "$DOCKER_ARGS.status-after" 2>&1\n'
+            '  fi;; esac; done\n'
             'cat "$FAKE_REVIEW"\n'
         )
         docker.chmod(0o755)
@@ -222,6 +271,8 @@ class ContainerSetup(unittest.TestCase):
             self.assertEqual(managed.get(key), value, key)
         self.assertEqual(managed["env"]["ANTHROPIC_BASE_URL"], "https://api.anthropic.com")
         self.assertNotIn("allowManagedPermissionRulesOnly", managed)
+        self.assertEqual(managed["permissions"]["deny"], DENIED)
+        self.assertEqual(managed["permissions"]["disableBypassPermissionsMode"], "disable")
 
     def test_the_container_gets_a_copy_of_the_checkout(self) -> None:
         """#50: a copy under RUNNER_TEMP, with the history, and never the workspace itself."""
@@ -239,6 +290,33 @@ class ContainerSetup(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(seen[-1], head, "git reads the copy as the checkout")
         self.assertNotIn(str(self.ws.workspace), " ".join(self.mounts()))
+
+    def test_what_is_mounted_has_none_of_the_head_s_project_config(self) -> None:
+        """#50: the head's `.claude/`, `.mcp.json` and `CLAUDE.local.md` never reach the container."""
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        seen = Path(f"{self.ws.args_file}.repo").read_text().splitlines()
+        for name in HEAD_CONFIG:
+            self.assertNotIn(name, seen)
+        self.assertIn("CLAUDE.md", seen, "CLAUDE.md is data the model still reads")
+        self.assertIn("app.py", seen)
+        for name in HEAD_CONFIG_TRACKED + HEAD_CONFIG_UNTRACKED:
+            self.assertTrue((self.ws.workspace / name).exists(), f"{name} stays in the runner's workspace")
+
+    def test_the_copy_reads_as_a_clean_checkout(self) -> None:
+        """#50: the Erodos holds a checkout that has changes that are not the PR's, so the removal shows none."""
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(f"{self.ws.args_file}.status").read_text(), "")
+
+    def test_an_erodos_commit_carries_its_edit_and_not_the_removal(self) -> None:
+        """#50: checkout, edit, add --all and commit, as the Erodos does: only the edited file is in it."""
+        done, _ = self.ws.run(FAKE_ERODOS="1")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(f"{self.ws.args_file}.commit").read_text().split(), ["M", "app.py"])
+        self.assertEqual(Path(f"{self.ws.args_file}.status-after").read_text(), "")
+        for name in HEAD_CONFIG:
+            self.assertNotIn(name, Path(f"{self.ws.args_file}.after").read_text().splitlines())
 
     def test_the_review_output_is_outside_the_copy(self) -> None:
         """#50: the later steps read RUNNER_TEMP/review.json, and the container writes it only on stdout."""
@@ -312,6 +390,32 @@ class ModelOutputIsValidated(unittest.TestCase):
                 self.assertEqual(out["blocking"], "1")
                 self.assertLessEqual(len(out["decision"]), 200)
                 self.assertNotRegex(out["decision"], r"[\r\n`\x00-\x08\x0b-\x1f\x7f]")
+
+    def test_a_review_that_holds_a_token_of_the_job_is_not_posted(self) -> None:
+        """#50: under injection the model could read the job's environment and write it into the review."""
+        for name in TOKENS:
+            with self.subTest(token=name):
+                secret = f"secret-{name.lower()}-0123456789"
+                done, lines = self.ws.run(
+                    review=json.dumps({"verdict": "approve", "comment": f"see {secret} here", "findings": []}),
+                    **{name: secret},
+                )
+                self.assertEqual(done.returncode, 0, done.stderr)
+                out = outputs(lines)
+                self.assertEqual((out["verdict"], out["blocking"], out["fixed"]), ("comment", "unknown", "false"))
+                self.assertTrue(out["decision"].startswith("hold_for_human"))
+                posted = (self.ws.temp / "review.json").read_text()
+                self.assertNotIn(secret, posted)
+                self.assertIn("<!-- ahrena-review -->", json.loads(posted)["comment"])
+                self.assertNotIn(secret, done.stdout + done.stderr, "the check never echoes the value")
+
+    def test_a_review_without_a_token_is_posted_as_it_is(self) -> None:
+        """#50: the same tokens are set and none of them is in the review."""
+        env = {name: f"secret-{name.lower()}-0123456789" for name in TOKENS}
+        done, lines = self.ws.run(review=json.dumps({"verdict": "approve", "comment": "clean"}), **env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(outputs(lines)["verdict"], "approve")
+        self.assertEqual(json.loads((self.ws.temp / "review.json").read_text())["comment"], "clean")
 
     def test_the_default_decision_stays(self) -> None:
         self.assertEqual(self.review(verdict="comment")["decision"], "hold_for_human: sem decisor")

@@ -100,28 +100,34 @@ name: argos
 # commit da base, e não o do PR: o job faz o checkout de `github.event.pull_request.head.sha` com
 # persist-credentials: false.
 #
-# O que o head do PR alcança, e o que não (barte-ai-services/.github#50, #51). O head é de quem abriu o PR, e o
-# Claude Code que roda no contêiner é aberto na raiz dele, então lê os arquivos do head como dado (o CLAUDE.md,
-# o .claude/settings.json, o .mcp.json) e seguiria o que eles configurassem. Por isso o runner grava um
-# managed-settings.json, que o contêiner monta só para leitura em /etc/claude-code/managed-settings.json, e o
-# managed vence o do head:
-#   - desligados: os hooks, os servidores MCP do projeto, os plugins de marketplace, a execução de shell dentro
-#     de skills e os comandos que as settings do projeto usam para obter credencial (apiKeyHelper,
-#     awsAuthRefresh, awsCredentialExport, gcpAuthRefresh, otelHeadersHelper, proxyAuthHelper);
-#   - fixo: ANTHROPIC_BASE_URL, para um `env` do head não mandar o token do Claude para outro endereço;
-#   - de fora de propósito: allowManagedPermissionRulesOnly, que também ignoraria as regras Bash que o runtime
-#     passa em allowedTools (os comandos que o projeto declara), e as regras de permissão do head não alargam
-#     nada no modo dontAsk em que o runtime roda.
-# Resta aberto: o `env` das settings do head, fora ANTHROPIC_BASE_URL, ainda vale no processo do Claude Code. O
-# managed não tem como zerar um `env` (os dois se somam), e isso só se fecha no runtime (settingSources do
-# ahrena-agents).
-# O contêiner trabalha numa cópia do checkout (cp -a em $RUNNER_TEMP), e não no workspace do runner: o que o
-# head escrever ali, o .git inclusive, não chega ao workspace. O host não roda git na cópia, e nenhum passo
-# depois lê arquivo dela; os passos seguintes só leem $RUNNER_TEMP/review.json, que o contêiner entrega pela
-# saída padrão. O Argos lê a cópia e, com fix ligado, o Erodos também commita e dá push a partir dela, com o
-# token próprio de escrita (a URL e o cabeçalho de autenticação vão no ambiente do git do runtime, e não no
-# .git/config). Já a saída do modelo é dado, e não código: nenhum `run:` a recebe por ${{ }}, e cada valor
-# (veredito, bloqueantes, decisão, fixed) é validado antes de ir para o GITHUB_OUTPUT.
+# What the PR's head reaches, and what it does not (barte-ai-services/.github#50, #51). The head belongs to
+# whoever opened the PR, and the Claude Code in the container is opened at its root, so it would read the
+# head's own project configuration (.claude/settings.json and settings.local.json, .mcp.json, CLAUDE.local.md)
+# and follow it: its `env` block (an LD_PRELOAD there loads into every child process of the container, which
+# reaches the tokens in the environment of process 1), its hooks, its MCP servers, its permission rules. Two
+# layers close that:
+#   - the head's `.claude/`, `.mcp.json` and `CLAUDE.local.md` never reach the container. The runner removes
+#     them from the copy it mounts and marks the tracked ones skip-worktree, so `git status` of the copy stays
+#     clean and the Erodos, which commits with `git add --all`, does not commit their removal. The host runs git
+#     on the copy only before the container starts, never after;
+#   - a managed-settings.json that the runner writes and the container mounts read-only at
+#     /etc/claude-code/managed-settings.json, which wins over any project file, stays as defence in depth:
+#     hooks, project MCP servers, marketplace plugins, shell inside skills and the credential helpers of the
+#     project settings are off; ANTHROPIC_BASE_URL is fixed; the model may not Read /proc, /sys or the managed
+#     file, and Bash, WebFetch and WebSearch are denied (the runtime grants none of them: no Bash rule exists
+#     while ARGOS_EXEC_COMMANDS is unset, which this reusable never sets).
+# Out on purpose: allowManagedPermissionRulesOnly, which would drop the Edit and Write grants the Erodos runs
+# with. The trade-off: the model no longer reads the head's own `.claude/` files, so a PR that changes them is
+# reviewed from the diff alone. CLAUDE.md stays in the copy, and the model reads it as data. The root fix is in
+# ahrena-agents: settingSources without `project`. That issue is still to be opened in ahrenatechnology/ahrena-agents.
+# The container works on a copy of the checkout (cp -a in $RUNNER_TEMP), not on the runner's workspace: what
+# the head writes there, the .git included, does not reach the workspace, and no later step reads a file from
+# it; the next steps read only $RUNNER_TEMP/review.json, which the container hands over on stdout. The Argos
+# reads the copy and, with fix on, the Erodos also commits and pushes from it, with its own write token (the
+# URL and the auth header go in the runtime's git environment, not in .git/config). What the model writes is
+# data, not code: no `run:` receives it through ${{ }}, each value (verdict, blocking, decision, fixed) is
+# validated before it goes to GITHUB_OUTPUT, and a review that carries the value of any token of the job is
+# not posted: the PR is held and the comment says so.
 
 on:
   workflow_call:
@@ -331,6 +337,8 @@ jobs:
           ARGOS_FIX: ${{ inputs.fix && steps.push.outputs.token != '' }}
           ARGOS_MAX_ROUNDS: ${{ inputs.max-rounds }}
           ARGOS_PUSH_TOKEN: ${{ steps.push.outputs.token }}
+          # Not passed to the container: only the leak check below reads it.
+          APP_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           # What the model wrote, or what an earlier step read from a comment, is data: it reaches GITHUB_OUTPUT
           # only through these checks, and no later step interpolates it into a script. A verdict that is none
@@ -360,13 +368,15 @@ jobs:
             sk-ant-api*) export ANTHROPIC_API_KEY="$CLAUDE_KEY" ;;
             *) export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_KEY" ;;
           esac
-          # The head's own Claude Code settings do not bind the container. The runner writes the managed
-          # settings, which win over the project's, and the container mounts them read-only where Claude Code
-          # reads them on Linux (2.1.296, the one in the pinned image). Each key was run against a head whose
-          # .claude/settings.json and .mcp.json try the thing it closes. Not here on purpose:
-          # allowManagedPermissionRulesOnly would also drop the Bash rules the runtime passes in allowedTools,
-          # and the head's permission rules widen nothing in dontAsk. An empty string overrides the head's
-          # helper and leaves the key as unset, so the login by CLAUDE_CODE_OAUTH_TOKEN goes on.
+          # The head's own Claude Code configuration does not bind the container (#50). It is kept out of the
+          # copy below, and the runner also writes managed settings, which win over the project's, as defence in
+          # depth: the container mounts them read-only where Claude Code reads them on Linux (2.1.296, the one in
+          # the pinned image). Each key was run against a head whose .claude/settings.json and .mcp.json try the
+          # thing it closes. Not here on purpose: allowManagedPermissionRulesOnly would drop the Edit and Write
+          # grants the Erodos runs with. The deny rules win over any allow; the runtime grants no Bash (no
+          # ARGOS_EXEC_COMMANDS is set), no WebFetch and no WebSearch, so denying them cuts nothing. An empty
+          # string overrides the head's helper and leaves the key as unset, so the login by
+          # CLAUDE_CODE_OAUTH_TOKEN goes on.
           managed="$RUNNER_TEMP/managed-settings.json"
           cat > "$managed" <<'MANAGED'
           {
@@ -383,14 +393,24 @@ jobs:
             "gcpAuthRefresh": "",
             "otelHeadersHelper": "",
             "proxyAuthHelper": "",
+            "permissions": {
+              "deny": ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"],
+              "disableBypassPermissionsMode": "disable"
+            },
             "env": { "ANTHROPIC_BASE_URL": "https://api.anthropic.com" }
           }
           MANAGED
-          # The container works on a copy of the checkout, and the host runs no git on it afterwards. What the
-          # head writes there, the .git included, does not reach the workspace. The copy sits next to, and not
-          # under, the files the later steps read ($RUNNER_TEMP/review.json comes out on stdout).
+          # The container works on a copy of the checkout. What the head writes there, the .git included, does not
+          # reach the workspace. The copy sits next to, and not under, the files the later steps read
+          # ($RUNNER_TEMP/review.json comes out on stdout). The head's Claude Code project configuration is
+          # dropped from the copy (#50): skip-worktree on the tracked paths first, so `git status` stays clean
+          # and the Erodos's `git add --all` does not stage their deletion, then the files go. This is the only
+          # git the host runs on the copy, and it runs before the container: after it, none.
           repo_copy="$(mktemp -d "$RUNNER_TEMP/argos-repo.XXXXXX")"
           cp -a "$PWD/." "$repo_copy/"
+          git -C "$repo_copy" ls-files -z -- .claude .mcp.json CLAUDE.local.md \
+            | xargs -0 -r git -C "$repo_copy" update-index --skip-worktree --
+          rm -rf "$repo_copy/.claude" "$repo_copy/.mcp.json" "$repo_copy/CLAUDE.local.md"
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
           # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
           set +e
@@ -416,6 +436,22 @@ jobs:
           if [ "$status" -ne 0 ] || ! jq -e . "$RUNNER_TEMP/review.json" >/dev/null 2>&1; then
             echo "::error::o Argos não terminou a review (saída $status); o log está acima"
             exit 1
+          fi
+          # A review that carries the literal value of a token the job holds is not posted (#50): a model under
+          # injection could read the job's environment and write it into the comment. The values come in by env
+          # and are compared by the shell, never put in an argument or an echo. The review is replaced by a fixed
+          # body, and the PR is held; an encoded or split copy of a token is not caught here.
+          leaked=false
+          review_text="$(cat "$RUNNER_TEMP/review.json")"
+          for secret in "$CLAUDE_KEY" "$GH_TOKEN" "$ARGOS_PUSH_TOKEN" "$APP_TOKEN" "$CLOUDFLARE_API_TOKEN"; do
+            if [ -n "$secret" ] && [[ "$review_text" == *"$secret"* ]]; then leaked=true; fi
+          done
+          if [ "$leaked" = true ]; then
+            echo "::error::a saída do modelo trazia o valor de um token do job: o parecer não foi publicado e o PR fica segurado"
+            jq -n '{verdict: "comment", findings: [], comment: "<!-- ahrena-review -->\n**Argos** · verdict `comment`\n\nO parecer não foi publicado: a saída do modelo trazia o valor de um segredo do job. O PR fica segurado até uma pessoa ler o log do job."}' \
+              > "$RUNNER_TEMP/review.json"
+            write_outputs comment unknown "hold_for_human: a saída do modelo trazia um segredo do job" false
+            exit 0
           fi
           # Taken whole, and not cut at the first line: a verdict with a newline in it is not a verdict.
           verdict=$(jq -r 'if (.verdict | type) == "string" then .verdict else "comment" end' "$RUNNER_TEMP/review.json")
