@@ -1,0 +1,56 @@
+name: argos-proof
+
+# Throwaway (barte-ai-services/.github#50): runs the reusable at this branch's head in environment mode
+# against a head with a hostile .claude/settings.json and a planted instruction. No real secret: the
+# environment argos-proof-50 holds none, and the caller passes no ARGOS_APP_PRIVATE_KEY. Never reaches main.
+
+on:
+  pull_request:
+    types: [ready_for_review, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+  statuses: read
+
+jobs:
+  argos:
+    if: github.event.action == 'ready_for_review'
+    uses: ./.github/workflows/argos.yml
+    with:
+      environment: argos-proof-50
+      auto-merge: false
+      fix: false
+    secrets:
+      claude-token: proof-not-a-real-token
+
+  # Control: the same image on the same head with none of the hardening (no managed settings, the head's
+  # .claude/ in place, a writable root), no token of any kind. Shows whether the hook fires when loaded.
+  control:
+    if: github.event.action == 'ready_for_review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: the image without the hardening, on the hostile head
+        env:
+          IMAGE: ghcr.io/ahrenatechnology/ahrena-agents@sha256:06c59d9cb50eb6742a7178e2bbd73df0e648cbdeff64e927afbef92852aece7c
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set +e
+          sha256sum_before="$(docker run --rm --entrypoint sh "$IMAGE" -c 'sha256sum /usr/bin/git; command -v node curl')"
+          echo "image /usr/bin/git and tools: $sha256sum_before"
+          timeout 300 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN=proof-not-a-real-token \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            -v "$PWD:/repo" -w /repo "$IMAGE" --pr "$PR" --changed "$BASE...$HEAD" > control.json 2> control.log
+          echo "control exit: $?"
+          tail -n 40 control.log
+          echo "--- /repo/HOOK-MARKER in the control:"
+          cat HOOK-MARKER 2>/dev/null || echo "(none)"
