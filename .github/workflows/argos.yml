@@ -130,7 +130,13 @@ name: argos
 #     configuration for the run. It also denies them on /repo/.git: the runtime later runs git there (reset,
 #     clean, status) with every token in its environment, and a `[filter]` smudge command or `core.fsmonitor`
 #     the model wrote into .git/config would run then and leak them. The runtime's own git commands are not the
-#     model's Edit or Write, so the deny does not touch them;
+#     model's Edit or Write, so the deny does not touch them. A nested .git is denied too, a directory or a
+#     gitfile (`x/.git/**` and `y/.git`): written with plain files, it makes `git add --all` record a gitlink,
+#     and the next `git status` in /repo runs that nested repository's config, its core.fsmonitor, with the
+#     tokens (safe.directory does not refuse it). As defence in depth the docker run also sets
+#     diff.ignoreSubmodules=all through the git env config, so status and diff do not open a gitlink at all;
+#     the runtime appends its own auth header after the entries it finds there (GIT_CONFIG_COUNT), so the
+#     push is not affected;
 #   - what the container can write (#50): the root filesystem is read-only (docker run --read-only), so the
 #     Erodos cannot overwrite /usr/bin/git, which later runs with every token the container holds, or anything
 #     else of the image. Writable are /repo (the copy, the one read-write bind) and the tmpfs /tmp, /root and
@@ -425,11 +431,13 @@ jobs:
                 "Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch",
                 "Edit(//repo/.claude/**)", "Edit(//repo/.mcp.json)", "Edit(//repo/CLAUDE.local.md)",
                 "Edit(//repo/**/.claude/**)", "Edit(//repo/**/CLAUDE.local.md)", "Edit(//repo/.git/**)",
+                "Edit(//repo/**/.git)", "Edit(//repo/**/.git/**)",
                 "Edit(//root/**)", "Edit(//etc/**)",
                 "Edit(//usr/**)", "Edit(//app/**)", "Edit(//bin/**)", "Edit(//sbin/**)", "Edit(//lib/**)",
                 "Edit(//opt/**)", "Edit(//var/**)",
                 "Write(//repo/.claude/**)", "Write(//repo/.mcp.json)", "Write(//repo/CLAUDE.local.md)",
                 "Write(//repo/**/.claude/**)", "Write(//repo/**/CLAUDE.local.md)", "Write(//repo/.git/**)",
+                "Write(//repo/**/.git)", "Write(//repo/**/.git/**)",
                 "Write(//root/**)", "Write(//etc/**)",
                 "Write(//usr/**)", "Write(//app/**)", "Write(//bin/**)", "Write(//sbin/**)", "Write(//lib/**)",
                 "Write(//opt/**)", "Write(//var/**)"
@@ -472,8 +480,10 @@ jobs:
           # The root filesystem is read-only (#50): the Erodos holds Edit and Write, and an overwritten
           # /usr/bin/git would later run with every token the container holds. Writable are /repo (the copy,
           # the only read-write bind), and the tmpfs /tmp, /root and Docker's /dev/shm (all noexec), which the
-          # runtime uses and which go away with the container. /repo/.git is denied to the model by the managed
-          # file: git runs there later with the tokens, so a config the model wrote would run.
+          # runtime uses and which go away with the container. /repo/.git and any nested .git are denied to the model
+          # by the managed file: git runs in /repo later with the tokens, so a config the model wrote there would
+          # run, and diff.ignoreSubmodules=all (second entry of the env config, after safe.directory) keeps status
+          # and diff from opening a gitlink the model recorded.
           docker run --rm --read-only --tmpfs /tmp --tmpfs /root \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
@@ -481,7 +491,8 @@ jobs:
             -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_API_URL -e GITHUB_SERVER_URL \
             -v "$GITHUB_EVENT_PATH:/github/event.json:ro" -e GITHUB_EVENT_PATH=/github/event.json \
             -v "$managed:/etc/claude-code/managed-settings.json:ro" \
-            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            -e GIT_CONFIG_COUNT=2 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            -e GIT_CONFIG_KEY_1=diff.ignoreSubmodules -e GIT_CONFIG_VALUE_1=all \
             -v "$repo_copy:/repo" -w /repo \
             "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \
             > "$RUNNER_TEMP/review.json" 2> "$RUNNER_TEMP/review.log"

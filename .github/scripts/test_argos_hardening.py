@@ -43,10 +43,12 @@ HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
 TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
 # #50: the Erodos holds Edit and Write, and the deny rules keep it from creating Claude Code configuration.
 # #50: /repo/.git is denied too: git runs there later (reset, clean, status) with every token in env, and a filter
-# or core.fsmonitor written into .git/config would run. Nested config is denied at any depth.
+# or core.fsmonitor written into .git/config would run. Nested config is denied at any depth, and so is a nested
+# .git, a directory or a gitfile: `git add --all` records it as a gitlink and the next `git status` runs its config.
 CONFIG_PATHS = [
     "//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md",
     "//repo/**/.claude/**", "//repo/**/CLAUDE.local.md", "//repo/.git/**",
+    "//repo/**/.git", "//repo/**/.git/**",
     "//root/**", "//etc/**",
 ]
 # #50: and on the system paths, where /usr/bin/git lives: the root filesystem is read-only, and this is the second line.
@@ -59,7 +61,7 @@ DENIED = (
 # #50: tracked and untracked Claude Code configuration deeper than the root, which Claude Code can load too.
 NESTED_TRACKED = ["pkg/.claude/commands/x.md", "pkg/CLAUDE.local.md"]
 NESTED_UNTRACKED = ["pkg/sub/CLAUDE.local.md", "pkg/sub/.claude/settings.json"]
-# The public image the behavioural test runs, pinned by digest (busybox, multi-arch index).
+# #50: the public image the behavioural test runs, pinned by digest (busybox, multi-arch index).
 PROBE_IMAGE = "busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
 REAL_DOCKER = shutil.which("docker")
 
@@ -216,6 +218,19 @@ class StaticChecks(unittest.TestCase):
         for rule in DENIED:
             self.assertIn(f'"{rule}"', heredoc)
         self.assertIn('"disableBypassPermissionsMode": "disable"', heredoc)
+
+    def test_the_docker_run_sets_git_to_ignore_submodules(self) -> None:
+        """#50: the env config of the run carries diff.ignoreSubmodules=all, after safe.directory."""
+        run = step_script("argos").split("docker run", 1)[1].split('"$ARGOS_IMAGE"', 1)[0]
+        self.assertIn("GIT_CONFIG_COUNT=2", run)
+        self.assertIn("GIT_CONFIG_KEY_1=diff.ignoreSubmodules", run)
+        self.assertIn("GIT_CONFIG_VALUE_1=all", run)
+
+    def test_the_header_states_the_nested_git_denial_and_the_submodule_setting(self) -> None:
+        """#50: the header says why a nested .git is denied to the model and what the git setting is for."""
+        text = header()
+        for needle in ("nested .git", "gitfile", "gitlink", "fsmonitor", "diff.ignoreSubmodules"):
+            self.assertIn(needle, text)
 
 
 class Workspace:
@@ -661,7 +676,7 @@ class ReadOnlyContainer(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         args = self.ws.docker_args()
         flags = args[: args.index("image@sha256:0")]
-        # The flags that shape the filesystem, as the step wrote them; the binds are the test's own.
+        # #50: the flags that shape the filesystem, as the step wrote them; the binds are the test's own.
         self.fs_flags: list[str] = []
         for i, a in enumerate(flags):
             if a == "--read-only":
@@ -697,12 +712,71 @@ class ReadOnlyContainer(unittest.TestCase):
 
     def test_a_write_under_repo_tmp_and_root_succeeds(self) -> None:
         """#50: the copy, the scratch space and the home stay writable."""
-        # Read back inside the container: a daemon in a VM (colima) does not share the host's temp directory.
+        # #50: read back inside the container: a daemon in a VM (colima) does not share the host's temp directory.
         done = self.sh(
             "for f in /repo/f /tmp/f /root/f /dev/shm/f; do echo x > $f && test -s $f || exit 1; done && echo ok"
         )
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(done.stdout.strip(), "ok")
+
+
+class NestedGitlink(unittest.TestCase):
+    """#50: a nested git dir the model wrote is recorded as a gitlink, and its config must not run on `git status`."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+        self.marker = self.root / "PWNED"
+        self.git("init", "-q", "-b", "main")
+        (self.repo / "app.py").write_text("print('hi')\n")
+        self.git("add", "-A")
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "init")
+        sha = self.git("rev-parse", "HEAD").stdout.strip()
+        # What plain file writes make, with no git: a git dir whose objects are the repository's own.
+        nested = self.repo / "x" / ".git"
+        (nested / "refs" / "heads").mkdir(parents=True)
+        (nested / "objects" / "info").mkdir(parents=True)
+        (nested / "HEAD").write_text("ref: refs/heads/main\n")
+        (nested / "refs" / "heads" / "main").write_text(sha + "\n")
+        (nested / "objects" / "info" / "alternates").write_text(str(self.repo / ".git" / "objects") + "\n")
+        (nested / "config").write_text(
+            f'[core]\n\trepositoryformatversion = 0\n\tfsmonitor = "touch {self.marker}; echo"\n'
+        )
+        self.git("add", "--all")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def git(self, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        full = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", **(env or {})}
+        return subprocess.run(["git", *args], cwd=self.repo, env=full, capture_output=True, text=True)
+
+    def step_env(self) -> dict[str, str]:
+        """The GIT_CONFIG_* the `docker run` of the step sets with -e."""
+        run = step_script("argos").split("docker run", 1)[1].split('"$ARGOS_IMAGE"', 1)[0]
+        pairs = re.findall(r"-e (GIT_CONFIG_\w+)=('[^']*'|\S+)", run)
+        return {key: value.strip("'") for key, value in pairs}
+
+    def test_the_nested_dir_is_a_gitlink_and_runs_its_config_without_the_setting(self) -> None:
+        """#50: the control: a plain `git status` runs the nested fsmonitor, so the attack is real here."""
+        self.assertIn("160000", self.git("ls-files", "-s", "x").stdout)
+        self.git("status", "--porcelain", env={"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory",
+                                               "GIT_CONFIG_VALUE_0": "*"})
+        self.assertTrue(self.marker.exists(), "the control did not run the nested fsmonitor")
+
+    def test_with_the_env_config_of_the_step_git_status_does_not_run_it(self) -> None:
+        """#50: with the step's env config, `git status` and `git diff` leave the gitlink alone."""
+        env = self.step_env()
+        self.assertEqual(env.get("GIT_CONFIG_KEY_1"), "diff.ignoreSubmodules")
+        # #50: the first `git add --all`, which recorded the gitlink in setUp, did not run it either. A second one
+        # does, with the setting too (probed on git 2.55): the setting is defence in depth, the deny on a nested
+        # .git is what keeps the model from writing one.
+        self.assertFalse(self.marker.exists(), "recording the gitlink ran the nested fsmonitor")
+        for args in (("status", "--porcelain"), ("status",), ("diff", "--stat")):
+            self.git(*args, env=env)
+            self.assertFalse(self.marker.exists(), f"`git {' '.join(args)}` ran the nested fsmonitor")
 
 
 if __name__ == "__main__":
