@@ -98,8 +98,30 @@ name: argos
 # recebe os secrets, mesmo para um PR de fork. Sem o guarda `head.repo.full_name == github.repository`, o PR
 # de um fork rodaria com a chave do app. Com ele, o job é pulado. Sob pull_request_target, `github.sha` é o
 # commit da base, e não o do PR: o job faz o checkout de `github.event.pull_request.head.sha` com
-# persist-credentials: false. O Argos só lê esse checkout e, com fix ligado, o Erodos também commita e dá push
-# a partir dele, com o token próprio de escrita; o runner não executa nada que veio do PR. Mantenha assim.
+# persist-credentials: false.
+#
+# O que o head do PR alcança, e o que não (barte-ai-services/.github#50, #51). O head é de quem abriu o PR, e o
+# Claude Code que roda no contêiner é aberto na raiz dele, então lê os arquivos do head como dado (o CLAUDE.md,
+# o .claude/settings.json, o .mcp.json) e seguiria o que eles configurassem. Por isso o runner grava um
+# managed-settings.json, que o contêiner monta só para leitura em /etc/claude-code/managed-settings.json, e o
+# managed vence o do head:
+#   - desligados: os hooks, os servidores MCP do projeto, os plugins de marketplace, a execução de shell dentro
+#     de skills e os comandos que as settings do projeto usam para obter credencial (apiKeyHelper,
+#     awsAuthRefresh, awsCredentialExport, gcpAuthRefresh, otelHeadersHelper, proxyAuthHelper);
+#   - fixo: ANTHROPIC_BASE_URL, para um `env` do head não mandar o token do Claude para outro endereço;
+#   - de fora de propósito: allowManagedPermissionRulesOnly, que também ignoraria as regras Bash que o runtime
+#     passa em allowedTools (os comandos que o projeto declara), e as regras de permissão do head não alargam
+#     nada no modo dontAsk em que o runtime roda.
+# Resta aberto: o `env` das settings do head, fora ANTHROPIC_BASE_URL, ainda vale no processo do Claude Code. O
+# managed não tem como zerar um `env` (os dois se somam), e isso só se fecha no runtime (settingSources do
+# ahrena-agents).
+# O contêiner trabalha numa cópia do checkout (cp -a em $RUNNER_TEMP), e não no workspace do runner: o que o
+# head escrever ali, o .git inclusive, não chega ao workspace. O host não roda git na cópia, e nenhum passo
+# depois lê arquivo dela; os passos seguintes só leem $RUNNER_TEMP/review.json, que o contêiner entrega pela
+# saída padrão. O Argos lê a cópia e, com fix ligado, o Erodos também commita e dá push a partir dela, com o
+# token próprio de escrita (a URL e o cabeçalho de autenticação vão no ambiente do git do runtime, e não no
+# .git/config). Já a saída do modelo é dado, e não código: nenhum `run:` a recebe por ${{ }}, e cada valor
+# (veredito, bloqueantes, decisão, fixed) é validado antes de ir para o GITHUB_OUTPUT.
 
 on:
   workflow_call:
@@ -249,6 +271,16 @@ jobs:
           verdict="$(sed -nE 's/^\*\*Verdict:\*\* *`([a-z_]+)`.*/\1/p' <<<"$header")"
           decision="$(sed -nE 's/.*\*\*Decisor:\*\* *`([^`]+)`.*/\1/p' <<<"$header")"
           blocking="$(grep -m1 -oE '\*\*[0-9]+\*\* bloqueantes' <<<"$comment" | tr -dc '0-9' || true)"
+          # The comment is the app's, but it is text a person may have touched, and it travels as an output: each
+          # field is checked before it is written. A verdict that is none of the three is a comment, which holds
+          # the PR; a decision is one short line with no control character and no backtick; a commit that is not
+          # 40 hex digits, or a count that is not digits, is a doubt, and a doubt is a new review.
+          if [ -n "$verdict" ]; then
+            case "$verdict" in approve|request_changes|comment) ;; *) verdict=comment ;; esac
+          fi
+          decision="$(printf '%s' "$decision" | tr -d '\000-\037\177`' | cut -c1-200)"
+          [[ "$blocking" =~ ^[0-9]+$ ]] || blocking=""
+          [[ "$reviewed" =~ ^[0-9a-f]{40}$ ]] || reviewed=""
           # From the head down the first parents to the reviewed commit, only clean merges of the base.
           merges_only() {
             local commit="$HEAD" parents tree
@@ -300,10 +332,21 @@ jobs:
           ARGOS_MAX_ROUNDS: ${{ inputs.max-rounds }}
           ARGOS_PUSH_TOKEN: ${{ steps.push.outputs.token }}
         run: |
+          # What the model wrote, or what an earlier step read from a comment, is data: it reaches GITHUB_OUTPUT
+          # only through these checks, and no later step interpolates it into a script. A verdict that is none
+          # of the three is a comment, which holds the PR. A decision is one short line, with no control
+          # character (CR and LF included) and no backtick. A blocking count that is not digits is `unknown`,
+          # which is not 0, so the PR is held and the check names the doubt.
+          safe_verdict() { case "$1" in approve|request_changes|comment) printf '%s' "$1" ;; *) printf comment ;; esac; }
+          safe_count() { if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$1"; else printf unknown; fi; }
+          safe_line() { printf '%s' "$1" | tr -d '\000-\037\177`' | cut -c1-200; }
+          write_outputs() {
+            { echo "verdict=$(safe_verdict "$1")"; echo "blocking=$(safe_count "$2")"
+              echo "decision=$(safe_line "$3")"; [ $# -lt 4 ] || echo "fixed=$4"; } >> "$GITHUB_OUTPUT"
+          }
           # The inherited opinion stands in for the review, so the steps below read one set of outputs.
           if [ "$INHERITED" = true ]; then
-            { echo "verdict=$INHERITED_VERDICT"; echo "blocking=$INHERITED_BLOCKING"
-              echo "decision=$INHERITED_DECISION"; } >> "$GITHUB_OUTPUT"
+            write_outputs "$INHERITED_VERDICT" "$INHERITED_BLOCKING" "$INHERITED_DECISION"
             exit 0
           fi
           if [ -z "$CLAUDE_KEY" ]; then
@@ -317,37 +360,71 @@ jobs:
             sk-ant-api*) export ANTHROPIC_API_KEY="$CLAUDE_KEY" ;;
             *) export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_KEY" ;;
           esac
+          # The head's own Claude Code settings do not bind the container. The runner writes the managed
+          # settings, which win over the project's, and the container mounts them read-only where Claude Code
+          # reads them on Linux (2.1.296, the one in the pinned image). Each key was run against a head whose
+          # .claude/settings.json and .mcp.json try the thing it closes. Not here on purpose:
+          # allowManagedPermissionRulesOnly would also drop the Bash rules the runtime passes in allowedTools,
+          # and the head's permission rules widen nothing in dontAsk. An empty string overrides the head's
+          # helper and leaves the key as unset, so the login by CLAUDE_CODE_OAUTH_TOKEN goes on.
+          managed="$RUNNER_TEMP/managed-settings.json"
+          cat > "$managed" <<'MANAGED'
+          {
+            "disableAllHooks": true,
+            "allowManagedHooksOnly": true,
+            "enableAllProjectMcpServers": false,
+            "allowManagedMcpServersOnly": true,
+            "allowedMcpServers": [],
+            "strictKnownMarketplaces": [],
+            "disableSkillShellExecution": true,
+            "apiKeyHelper": "",
+            "awsAuthRefresh": "",
+            "awsCredentialExport": "",
+            "gcpAuthRefresh": "",
+            "otelHeadersHelper": "",
+            "proxyAuthHelper": "",
+            "env": { "ANTHROPIC_BASE_URL": "https://api.anthropic.com" }
+          }
+          MANAGED
+          # The container works on a copy of the checkout, and the host runs no git on it afterwards. What the
+          # head writes there, the .git included, does not reach the workspace. The copy sits next to, and not
+          # under, the files the later steps read ($RUNNER_TEMP/review.json comes out on stdout).
+          repo_copy="$(mktemp -d "$RUNNER_TEMP/argos-repo.XXXXXX")"
+          cp -a "$PWD/." "$repo_copy/"
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
           # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
           set +e
           # The event goes in read-only: the runtime reads from it whether the head is of this repository and
-          # its branch, which is where the Erodos pushes.
+          # its branch, which is where the Erodos pushes. The Erodos pushes from the copy: it names the remote
+          # by URL and sends the credential in the git environment, so it needs nothing from the copy's config.
           docker run --rm \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
             -e ARGOS_FIX -e ARGOS_MAX_ROUNDS -e ARGOS_PUSH_TOKEN \
             -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_RUN_ID -e GITHUB_API_URL -e GITHUB_SERVER_URL \
             -v "$GITHUB_EVENT_PATH:/github/event.json:ro" -e GITHUB_EVENT_PATH=/github/event.json \
+            -v "$managed:/etc/claude-code/managed-settings.json:ro" \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
-            -v "$PWD:/repo" -w /repo \
+            -v "$repo_copy:/repo" -w /repo \
             "$ARGOS_IMAGE" --pr "$PR" --changed "$BASE...$HEAD" \
             > "$RUNNER_TEMP/review.json" 2> "$RUNNER_TEMP/review.log"
           status=$?
           set -e
+          # Files the container made are root's: the runner's own user may not be able to remove them.
+          rm -rf "${repo_copy:?}" 2>/dev/null || sudo -n rm -rf "${repo_copy:?}" 2>/dev/null || true
           cat "$RUNNER_TEMP/review.log" >&2
           if [ "$status" -ne 0 ] || ! jq -e . "$RUNNER_TEMP/review.json" >/dev/null 2>&1; then
             echo "::error::o Argos não terminou a review (saída $status); o log está acima"
             exit 1
           fi
-          verdict=$(jq -r '.verdict // "comment"' "$RUNNER_TEMP/review.json")
+          # Taken whole, and not cut at the first line: a verdict with a newline in it is not a verdict.
+          verdict=$(jq -r 'if (.verdict | type) == "string" then .verdict else "comment" end' "$RUNNER_TEMP/review.json")
           blocking=$(jq '[.findings[]? | select(.severity == "blocking")] | length' "$RUNNER_TEMP/review.json")
-          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-          echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
           decision=$(jq -r '.decision // "hold_for_human: sem decisor"' "$RUNNER_TEMP/review.json" | head -n1)
-          echo "decision=$decision" >> "$GITHUB_OUTPUT"
           # The Erodos pushed a commit: the review of that commit decides, not this one.
           fixed=$(jq -r 'if .fixCommit then "true" else "false" end' "$RUNNER_TEMP/review.json")
-          echo "fixed=$fixed" >> "$GITHUB_OUTPUT"
+          [ "$fixed" = true ] || fixed=false
+          write_outputs "$verdict" "$blocking" "$decision" "$fixed"
 
       # Approve with 0 blockers releases the merge, and every warning left becomes a follow-up issue in the PR's
       # repository, linked to the PR by its body. One issue per warning: a warning that already has an issue for
@@ -459,17 +536,19 @@ jobs:
           # tem de sair com a cara de quem o escreveu.
           AUTHOR: ${{ steps.app.outputs.app-slug && format('{0}[bot]', steps.app.outputs.app-slug) || 'github-actions[bot]' }}
           FOLLOWUPS: ${{ steps.followups.outputs.list }}
+          VERDICT: ${{ steps.argos.outputs.verdict }}
+          MODE: ${{ inputs.mode }}
         run: |
           body="$RUNNER_TEMP/comment.md"
           jq -r '.comment // empty' "$RUNNER_TEMP/review.json" > "$body"
           if [ ! -s "$body" ]; then
-            { echo "<!-- ahrena-review -->"; echo "**Argos** · verdict \`${{ steps.argos.outputs.verdict }}\`"; echo
+            { echo "<!-- ahrena-review -->"; echo "**Argos** · verdict \`$VERDICT\`"; echo
               jq -r '.summary // "(sem parecer)"' "$RUNNER_TEMP/review.json"; } > "$body"
           fi
           if [ -n "$FOLLOWUPS" ] && [ -s "$FOLLOWUPS" ]; then
             { echo; cat "$FOLLOWUPS"; } >> "$body"
           fi
-          printf '\n<sub>commit %s · modo %s</sub>\n' "$HEAD" "${{ inputs.mode }}" >> "$body"
+          printf '\n<sub>commit %s · modo %s</sub>\n' "$HEAD" "$MODE" >> "$body"
           id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
             --jq '[.[] | select(.user.login == env.AUTHOR and (.body | startswith("<!-- ahrena-review -->")))] | last | .id // empty')
           if [ -n "$id" ]; then
@@ -562,6 +641,8 @@ jobs:
 
       - name: o check
         if: inputs.mode == 'block' && steps.argos.outputs.blocking != '0'
+        env:
+          BLOCKING: ${{ steps.argos.outputs.blocking }}
         run: |
-          echo "::error::o Argos achou ${{ steps.argos.outputs.blocking }} problema(s) blocking; o parecer está no PR"
+          echo "::error::o Argos achou $BLOCKING problema(s) blocking; o parecer está no PR"
           exit 1
