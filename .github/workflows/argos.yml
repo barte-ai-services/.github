@@ -104,7 +104,7 @@ name: argos
 # whoever opened the PR, and the Claude Code in the container is opened at its root, so it would read the
 # head's own project configuration (.claude/settings.json and settings.local.json, .mcp.json, CLAUDE.local.md)
 # and follow it: its `env` block (an LD_PRELOAD there loads into every child process of the container, which
-# reaches the tokens in the environment of process 1), its hooks, its MCP servers, its permission rules. Two
+# reaches the tokens in the environment of process 1), its hooks, its MCP servers, its permission rules. These
 # layers close that:
 #   - the head's `.claude/`, `.mcp.json` and `CLAUDE.local.md` never reach the container. The runner removes
 #     them from the copy it mounts and marks the tracked ones skip-worktree, so `git status` of the copy stays
@@ -116,9 +116,24 @@ name: argos
 #     project settings are off; ANTHROPIC_BASE_URL is fixed; the model may not Read /proc, /sys or the managed
 #     file, and Bash, WebFetch and WebSearch are denied (the runtime grants none of them: no Bash rule exists
 #     while ARGOS_EXEC_COMMANDS is unset, which this reusable never sets).
+#   - every tracked symlink of the head is removed from the copy too (mode 120000, at any depth, with the same
+#     skip-worktree). Probed on Claude Code 2.1.296 with a mock model: a committed CLAUDE.md that is a symlink to
+#     /proc/1/environ is loaded as project memory, and a committed lib/x that is one is read by Read and by Grep
+#     of its path, so without the managed deny on /proc the whole environment of process 1, the tokens
+#     included, reached the model's request. With the deny, Read, Grep and the memory load were refused, so the
+#     removal is defence in depth, not the only closure. A fresh checkout has no untracked symlink, so the
+#     tracked ones are all there are;
+#   - the Erodos holds Edit and Write, so the managed file also denies them on /repo/.claude, /repo/.mcp.json,
+#     /repo/CLAUDE.local.md, /root and /etc: it cannot create Claude Code configuration for the run. A nested
+#     CLAUDE.local.md is not covered by these paths.
 # Out on purpose: allowManagedPermissionRulesOnly, which would drop the Edit and Write grants the Erodos runs
 # with. The trade-off: the model no longer reads the head's own `.claude/` files, so a PR that changes them is
-# reviewed from the diff alone. CLAUDE.md stays in the copy, and the model reads it as data. The root fix is in
+# reviewed from the diff alone. CLAUDE.md stays in the copy, and Claude Code loads a regular one as
+# project instructions, not as data: the head can still instruct the model. That is bounded by the model having no
+# Bash, WebFetch or WebSearch, the managed denies, the validation of what it returns, and the leak check below.
+# An @-import in CLAUDE.md of /proc/self/environ or /proc/1/environ was not expanded in the probe (the file text
+# loaded, the target did not); an import of a file inside the repository is expanded, and that file is the
+# head's own data. The root fix is in
 # ahrena-agents: settingSources without `project`. That issue is still to be opened in ahrenatechnology/ahrena-agents.
 # The container works on a copy of the checkout (cp -a in $RUNNER_TEMP), not on the runner's workspace: what
 # the head writes there, the .git included, does not reach the workspace, and no later step reads a file from
@@ -127,7 +142,8 @@ name: argos
 # URL and the auth header go in the runtime's git environment, not in .git/config). What the model writes is
 # data, not code: no `run:` receives it through ${{ }}, each value (verdict, blocking, decision, fixed) is
 # validated before it goes to GITHUB_OUTPUT, and a review that carries the value of any token of the job is
-# not posted: the PR is held and the comment says so.
+# not posted: the PR is held and the comment says so. That leak check reads review.json only: the Erodos commit
+# and push happen inside the container and are not checked, and an encoded or split copy of a token is missed.
 
 on:
   workflow_call:
@@ -394,7 +410,13 @@ jobs:
             "otelHeadersHelper": "",
             "proxyAuthHelper": "",
             "permissions": {
-              "deny": ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"],
+              "deny": [
+                "Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch",
+                "Edit(//repo/.claude/**)", "Edit(//repo/.mcp.json)", "Edit(//repo/CLAUDE.local.md)",
+                "Edit(//root/**)", "Edit(//etc/**)",
+                "Write(//repo/.claude/**)", "Write(//repo/.mcp.json)", "Write(//repo/CLAUDE.local.md)",
+                "Write(//root/**)", "Write(//etc/**)"
+              ],
               "disableBypassPermissionsMode": "disable"
             },
             "env": { "ANTHROPIC_BASE_URL": "https://api.anthropic.com" }
@@ -411,6 +433,15 @@ jobs:
           git -C "$repo_copy" ls-files -z -- .claude .mcp.json CLAUDE.local.md \
             | xargs -0 -r git -C "$repo_copy" update-index --skip-worktree --
           rm -rf "$repo_copy/.claude" "$repo_copy/.mcp.json" "$repo_copy/CLAUDE.local.md"
+          # #50: the same for every tracked symlink (mode 120000, any depth): cp -a keeps them, and one that
+          # points into /proc is read as a file or loaded as CLAUDE.md. Unlinked with rm, never followed.
+          links="$(mktemp "$RUNNER_TEMP/argos-links.XXXXXX")"
+          git -C "$repo_copy" ls-files -s -z | while IFS= read -r -d '' entry; do
+            if [ "${entry%% *}" = 120000 ]; then printf '%s\0' "${entry#*$'\t'}"; fi
+          done > "$links"
+          git -C "$repo_copy" update-index --skip-worktree -z --stdin < "$links"
+          (cd "$repo_copy" && xargs -0 -r rm -f -- < "$links")
+          rm -f "$links"
           # O checkout é do runner e o contêiner roda como root: sem o safe.directory, o git do contêiner
           # recusa o repositório («dubious ownership») e o roteamento não acha o diff.
           set +e
@@ -440,7 +471,8 @@ jobs:
           # A review that carries the literal value of a token the job holds is not posted (#50): a model under
           # injection could read the job's environment and write it into the comment. The values come in by env
           # and are compared by the shell, never put in an argument or an echo. The review is replaced by a fixed
-          # body, and the PR is held; an encoded or split copy of a token is not caught here.
+          # body, and the PR is held. This reads review.json only: the Erodos commit and push happen inside the
+          # container and are not checked here, and an encoded or split copy of a token is not caught.
           leaked=false
           review_text="$(cat "$RUNNER_TEMP/review.json")"
           for secret in "$CLAUDE_KEY" "$GH_TOKEN" "$ARGOS_PUSH_TOKEN" "$APP_TOKEN" "$CLOUDFLARE_API_TOKEN"; do

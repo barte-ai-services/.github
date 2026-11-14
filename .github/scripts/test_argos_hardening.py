@@ -40,9 +40,15 @@ HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
 
 # Managed deny rules (#50): the job's environment, the managed file, and the tools the runtime never grants.
 TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
-DENIED = ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"]
+# #50: the Erodos holds Edit and Write, and the deny rules keep it from creating Claude Code configuration.
+CONFIG_PATHS = ["//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md", "//root/**", "//etc/**"]
+DENIED = (
+    ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"]
+    + [f"Edit({path})" for path in CONFIG_PATHS]
+    + [f"Write({path})" for path in CONFIG_PATHS]
+)
 
-# Keys the head's `.claude/settings.json` could use to run a command or reach a server, and that the
+# #50: Keys the head's `.claude/settings.json` could use to run a command or reach a server, and that the
 # managed file closes (#50). Each was confirmed against Claude Code 2.1.296, the one in the pinned image.
 CLOSED = {
     "disableAllHooks": True,
@@ -135,6 +141,20 @@ class StaticChecks(unittest.TestCase):
         self.assertNotIn('git -C "$repo_copy"', after, "no git on the copy after the container ran")
         self.assertNotIn("git ", after.split('"$ARGOS_IMAGE"', 1)[1].split("review.log", 1)[0])
 
+    def test_the_head_s_symlinks_are_removed_on_the_host_before_the_container(self) -> None:
+        """#50: every tracked symlink (mode 120000) is marked skip-worktree and unlinked, before docker runs."""
+        before = step_script("argos").split("docker run", 1)[0]
+        self.assertIn("ls-files -s -z", before)
+        self.assertIn("120000", before)
+        self.assertRegex(before, r"update-index --skip-worktree -z --stdin")
+
+    def test_the_header_states_the_limits_of_the_leak_check_and_of_claude_md(self) -> None:
+        """#50: the leak check reads review.json only, and CLAUDE.md is instructions, with what the probe showed."""
+        text = header()
+        for needle in ("review.json only", "Erodos commit", "encoded", "symlink", "@-import", "project instructions"):
+            self.assertIn(needle, text)
+        self.assertNotIn("the model reads it as data", text)
+
     def test_the_header_states_what_the_head_reaches_and_what_it_does_not(self) -> None:
         """#50: the claims that the head's rules widen nothing, and that the rest only closes in the runtime,
         were false, and the header names the real mechanism, the trade-off and the root fix."""
@@ -166,6 +186,7 @@ class Workspace:
             subprocess.run(["git", *args], cwd=self.workspace, check=True, capture_output=True)
         (self.workspace / "app.py").write_text("print('hi')\n")
         (self.workspace / "CLAUDE.md").write_text("# project notes\n")
+        self.add_symlinks()
         for name in HEAD_CONFIG_TRACKED:
             (self.workspace / name).parent.mkdir(parents=True, exist_ok=True)
             (self.workspace / name).write_text("{}\n")
@@ -183,6 +204,7 @@ class Workspace:
             'for a in "$@"; do case "$a" in *:/repo) src="${a%:/repo}"\n'
             '  { ls -A "$src"; git -C "$src" rev-parse HEAD; } > "$DOCKER_ARGS.repo" 2>&1\n'
             '  git -C "$src" status --porcelain > "$DOCKER_ARGS.status" 2>&1\n'
+            '  find "$src" -name .git -prune -o -type l -print > "$DOCKER_ARGS.links" 2>&1\n'
             '  if [ -n "$FAKE_ERODOS" ]; then\n'
             '    git -C "$src" checkout --quiet --detach "$HEAD"\n'
             '    echo "print(2)" >> "$src/app.py"\n'
@@ -190,6 +212,7 @@ class Workspace:
             '    git -C "$src" -c user.name=e -c user.email=e@example.com commit --quiet --no-verify -m fix\n'
             '    git -C "$src" show --name-status --format= HEAD > "$DOCKER_ARGS.commit" 2>&1\n'
             '    ls -A "$src" > "$DOCKER_ARGS.after"\n'
+            '    find "$src" -name .git -prune -o -type l -print > "$DOCKER_ARGS.links-after" 2>&1\n'
             '    git -C "$src" status --porcelain > "$DOCKER_ARGS.status-after" 2>&1\n'
             '  fi;; esac; done\n'
             'cat "$FAKE_REVIEW"\n'
@@ -201,6 +224,12 @@ class Workspace:
         self.output = root / "output"
         self.event = root / "event.json"
         self.event.write_text("{}")
+
+    def add_symlinks(self) -> None:
+        """#50: symlinks into the job's environment, as a head can commit them."""
+        for name, target in (("lib/x", "/proc/1/environ"), ("docs/CLAUDE.md", "/proc/self/environ")):
+            (self.workspace / name).parent.mkdir()
+            (self.workspace / name).symlink_to(target)
 
     def run(self, review: str | None = None, **env: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         self.review_file.write_text(review if review is not None else "{}")
@@ -317,6 +346,48 @@ class ContainerSetup(unittest.TestCase):
         self.assertEqual(Path(f"{self.ws.args_file}.status-after").read_text(), "")
         for name in HEAD_CONFIG:
             self.assertNotIn(name, Path(f"{self.ws.args_file}.after").read_text().splitlines())
+
+    def head_with_symlinked_claude_md(self) -> None:
+        """#50: a head whose root CLAUDE.md is a symlink to the job's environment, committed."""
+        (self.ws.workspace / "CLAUDE.md").unlink()
+        (self.ws.workspace / "CLAUDE.md").symlink_to("/proc/1/environ")
+        for args in (["add", "-A"], ["commit", "-q", "-m", "symlink"]):
+            subprocess.run(["git", *args], cwd=self.ws.workspace, check=True, capture_output=True)
+
+    def test_no_symlink_of_the_head_is_mounted(self) -> None:
+        """#50: with the managed deny rules off, a symlinked CLAUDE.md is loaded as project memory and a symlinked
+        file is read and grepped; the probe on Claude Code 2.1.296 put /proc/1/environ in the model's request. The
+        copy has none of the head's tracked symlinks, at any depth."""
+        self.head_with_symlinked_claude_md()
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(f"{self.ws.args_file}.links").read_text(), "")
+        self.assertNotIn("CLAUDE.md", Path(f"{self.ws.args_file}.repo").read_text().splitlines())
+        self.assertEqual(Path(f"{self.ws.args_file}.status").read_text(), "")
+        self.assertIn("app.py", Path(f"{self.ws.args_file}.repo").read_text().splitlines())
+        for name in ("CLAUDE.md", "lib/x", "docs/CLAUDE.md"):
+            self.assertTrue((self.ws.workspace / name).is_symlink(), f"{name} stays in the runner's workspace")
+
+    def test_an_erodos_commit_does_not_carry_the_removal_of_the_symlinks(self) -> None:
+        """#50: skip-worktree on the symlinks, so `git add --all` does not stage their deletion."""
+        self.head_with_symlinked_claude_md()
+        done, _ = self.ws.run(FAKE_ERODOS="1")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(f"{self.ws.args_file}.commit").read_text().split(), ["M", "app.py"])
+        self.assertEqual(Path(f"{self.ws.args_file}.status-after").read_text(), "")
+        self.assertEqual(Path(f"{self.ws.args_file}.links-after").read_text(), "")
+
+    def test_a_regular_claude_md_stays_in_the_copy(self) -> None:
+        """#50: only symlinks go; a regular CLAUDE.md, at the root or deeper, is the head's data and stays."""
+        (self.ws.workspace / "docs" / "CLAUDE.md").unlink()
+        (self.ws.workspace / "docs" / "CLAUDE.md").write_text("notes\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.ws.workspace, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "regular"], cwd=self.ws.workspace, check=True, capture_output=True)
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("CLAUDE.md", Path(f"{self.ws.args_file}.repo").read_text().splitlines())
+        self.assertEqual(Path(f"{self.ws.args_file}.status").read_text(), "")
+        self.assertEqual(Path(f"{self.ws.args_file}.links").read_text(), "")
 
     def test_the_review_output_is_outside_the_copy(self) -> None:
         """#50: the later steps read RUNNER_TEMP/review.json, and the container writes it only on stdout."""
