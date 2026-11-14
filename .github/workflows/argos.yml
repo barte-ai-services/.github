@@ -126,13 +126,17 @@ name: argos
 #   - Claude Code also loads a CLAUDE.local.md and a .claude/ from a subdirectory, so the same removal, with the
 #     same skip-worktree, takes them at any depth;
 #   - the Erodos holds Edit and Write, so the managed file also denies them on /repo/.claude, /repo/.mcp.json,
-#     /repo/CLAUDE.local.md, /root and /etc: it cannot create Claude Code configuration for the run;
+#     /repo/CLAUDE.local.md, the same two at any depth under /repo, /root and /etc: it cannot create Claude Code
+#     configuration for the run. It also denies them on /repo/.git: the runtime later runs git there (reset,
+#     clean, status) with every token in its environment, and a `[filter]` smudge command or `core.fsmonitor`
+#     the model wrote into .git/config would run then and leak them. The runtime's own git commands are not the
+#     model's Edit or Write, so the deny does not touch them;
 #   - what the container can write (#50): the root filesystem is read-only (docker run --read-only), so the
 #     Erodos cannot overwrite /usr/bin/git, which later runs with every token the container holds, or anything
-#     else of the image. Writable are only /repo (the copy, the one read-write bind) and /tmp and /root, both
-#     tmpfs that go away with the container; the event file and the managed file are mounted read-only. The
-#     managed file also denies Edit and Write on /usr, /app, /bin, /sbin, /lib, /opt and /var, as defence in
-#     depth behind the read-only root.
+#     else of the image. Writable are /repo (the copy, the one read-write bind) and the tmpfs /tmp, /root and
+#     Docker's /dev/shm, all mounted noexec and gone with the container; the event file and the managed file
+#     are mounted read-only. The managed file also denies Edit and Write on /usr, /app, /bin, /sbin, /lib,
+#     /opt and /var, as defence in depth behind the read-only root.
 # Out on purpose: allowManagedPermissionRulesOnly, which would drop the Edit and Write grants the Erodos runs
 # with. The trade-off: the model no longer reads the head's own `.claude/` files, so a PR that changes them is
 # reviewed from the diff alone. CLAUDE.md stays in the copy, and Claude Code loads a regular one as
@@ -420,10 +424,12 @@ jobs:
               "deny": [
                 "Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch",
                 "Edit(//repo/.claude/**)", "Edit(//repo/.mcp.json)", "Edit(//repo/CLAUDE.local.md)",
+                "Edit(//repo/**/.claude/**)", "Edit(//repo/**/CLAUDE.local.md)", "Edit(//repo/.git/**)",
                 "Edit(//root/**)", "Edit(//etc/**)",
                 "Edit(//usr/**)", "Edit(//app/**)", "Edit(//bin/**)", "Edit(//sbin/**)", "Edit(//lib/**)",
                 "Edit(//opt/**)", "Edit(//var/**)",
                 "Write(//repo/.claude/**)", "Write(//repo/.mcp.json)", "Write(//repo/CLAUDE.local.md)",
+                "Write(//repo/**/.claude/**)", "Write(//repo/**/CLAUDE.local.md)", "Write(//repo/.git/**)",
                 "Write(//root/**)", "Write(//etc/**)",
                 "Write(//usr/**)", "Write(//app/**)", "Write(//bin/**)", "Write(//sbin/**)", "Write(//lib/**)",
                 "Write(//opt/**)", "Write(//var/**)"
@@ -465,8 +471,9 @@ jobs:
           # by URL and sends the credential in the git environment, so it needs nothing from the copy's config.
           # The root filesystem is read-only (#50): the Erodos holds Edit and Write, and an overwritten
           # /usr/bin/git would later run with every token the container holds. Writable are /repo (the copy,
-          # the only read-write bind), and /tmp and /root as tmpfs, which the runtime uses and which go away
-          # with the container.
+          # the only read-write bind), and the tmpfs /tmp, /root and Docker's /dev/shm (all noexec), which the
+          # runtime uses and which go away with the container. /repo/.git is denied to the model by the managed
+          # file: git runs there later with the tokens, so a config the model wrote would run.
           docker run --rm --read-only --tmpfs /tmp --tmpfs /root \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \

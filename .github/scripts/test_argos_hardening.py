@@ -42,7 +42,13 @@ HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
 # Managed deny rules (#50): the job's environment, the managed file, and the tools the runtime never grants.
 TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
 # #50: the Erodos holds Edit and Write, and the deny rules keep it from creating Claude Code configuration.
-CONFIG_PATHS = ["//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md", "//root/**", "//etc/**"]
+# #50: /repo/.git is denied too: git runs there later (reset, clean, status) with every token in env, and a filter
+# or core.fsmonitor written into .git/config would run. Nested config is denied at any depth.
+CONFIG_PATHS = [
+    "//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md",
+    "//repo/**/.claude/**", "//repo/**/CLAUDE.local.md", "//repo/.git/**",
+    "//root/**", "//etc/**",
+]
 # #50: and on the system paths, where /usr/bin/git lives: the root filesystem is read-only, and this is the second line.
 SYSTEM_PATHS = [f"//{name}/**" for name in ("usr", "app", "bin", "sbin", "lib", "opt", "var")]
 DENIED = (
@@ -145,10 +151,16 @@ class StaticChecks(unittest.TestCase):
         script = step_script("argos")
         before, after = script.split("docker run", 1)
         self.assertIn("update-index --skip-worktree", before)
-        self.assertIn(".claude", before)
-        self.assertIn(".mcp.json", before)
-        self.assertIn("CLAUDE.local.md", before)
-        self.assertRegex(before, r"ls-files -z -- .*\.mcp\.json")
+        self.assertIn(
+            "git -C \"$repo_copy\" ls-files -z -- ':(glob)**/.claude' ':(glob)**/.claude/**' "
+            "':(glob)**/CLAUDE.local.md' .mcp.json",
+            before,
+        )
+        self.assertIn(
+            'find "$repo_copy" -name .git -prune -o \\( -name .claude -o -name CLAUDE.local.md \\) -prune -exec rm -rf {} +',
+            before,
+        )
+        self.assertIn('rm -rf "$repo_copy/.mcp.json"', before)
         self.assertNotIn('git -C "$repo_copy"', after, "no git on the copy after the container ran")
         self.assertNotIn("git ", after.split('"$ARGOS_IMAGE"', 1)[1].split("review.log", 1)[0])
 
@@ -629,14 +641,11 @@ class InheritedCommentIsValidated(unittest.TestCase):
         self.assertRegex(out["blocking"], r"^[0-9]+$")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 @unittest.skipUnless(REAL_DOCKER, "docker is not installed: the behaviour of the flags needs a container")
 class ReadOnlyContainer(unittest.TestCase):
-    """#50: a container started with the flags of the step cannot write /usr/bin/git, and still writes /repo, /tmp
-    and /root. Public image, no credentials."""
+    """#50: a container started with the flags of the step cannot write /usr/bin/git, and still writes /repo, /tmp,
+    /root and Docker's /dev/shm. Public image, no credentials."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -690,7 +699,11 @@ class ReadOnlyContainer(unittest.TestCase):
         """#50: the copy, the scratch space and the home stay writable."""
         # Read back inside the container: a daemon in a VM (colima) does not share the host's temp directory.
         done = self.sh(
-            "for f in /repo/f /tmp/f /root/f; do echo x > $f && test -s $f || exit 1; done && echo ok"
+            "for f in /repo/f /tmp/f /root/f /dev/shm/f; do echo x > $f && test -s $f || exit 1; done && echo ok"
         )
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(done.stdout.strip(), "ok")
+
+
+if __name__ == "__main__":
+    unittest.main()
