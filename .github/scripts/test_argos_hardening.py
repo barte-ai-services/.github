@@ -734,7 +734,7 @@ class NestedGitlink(unittest.TestCase):
         self.git("add", "-A")
         self.git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "init")
         sha = self.git("rev-parse", "HEAD").stdout.strip()
-        # What plain file writes make, with no git: a git dir whose objects are the repository's own.
+        # #50: What plain file writes make, with no git: a git dir whose objects are the repository's own.
         nested = self.repo / "x" / ".git"
         (nested / "refs" / "heads").mkdir(parents=True)
         (nested / "objects" / "info").mkdir(parents=True)
