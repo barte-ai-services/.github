@@ -68,16 +68,16 @@ name: argos
 #
 # Modo pull_request_target + environment (barte-ai-services/.github#50): para um repo cujo secret do app do
 # Argos mora num environment, e não na org. O caller troca o gatilho e passa o nome do environment: (#50)
-#   on: (#50)
-#     pull_request_target: (#50)
-#       types: [opened, synchronize, reopened, ready_for_review] (#50)
-#   jobs: (#50)
-#     argos: (#50)
-#       uses: barte-ai-services/.github/.github/workflows/argos.yml@main (#50)
-#       secrets: (#50)
-#         claude-token: ...    # como acima (#50)
-#       with: (#50)
-#         environment: argos (#50)
+#   on:
+#     pull_request_target:
+#       types: [opened, synchronize, reopened, ready_for_review]
+#   jobs:
+#     argos:
+#       uses: barte-ai-services/.github/.github/workflows/argos.yml@main
+#       secrets:
+#         claude-token: ...    # como acima
+#       with:
+#         environment: argos
 # O caller não passa nada sob o nome ARGOS_APP_PRIVATE_KEY. O job `review` passa a rodar nesse environment e (#50)
 # lê dele o secret ARGOS_APP_PRIVATE_KEY. Um secret de (#50)
 # environment só chega ao job que declara o `environment`, e o caller não pode usar essa palavra num job que (#50)

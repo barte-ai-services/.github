@@ -111,6 +111,40 @@ def header() -> str:
     return TEXT[: TEXT.index("\non:\n")]
 
 
+def caller_example() -> list[str]:
+    """The sample lines of the pull_request_target caller in the header, without the `# ` prefix."""
+    lines = header().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.endswith("passa o nome do environment: (#50)")) + 1
+    end = next(i for i, line in enumerate(lines) if line.startswith("# O caller não passa nada"))
+    return [line[2:] for line in lines[start:end]]
+
+
+def parse_yaml_subset(lines: list[str]) -> dict[str, object]:
+    """Nested mappings by 2-space indentation, scalars, a flow list and a trailing `# comment`."""
+    root: dict[str, object] = {}
+    stack: list[tuple[int, dict[str, object]]] = [(-1, root)]
+    for raw in lines:
+        text = re.sub(r"\s+#.*$", "", raw).rstrip()
+        if not text.strip():
+            continue
+        indent = len(text) - len(text.lstrip())
+        key, sep, value = text.strip().partition(":")
+        if not sep or (value and not value.startswith(" ")):
+            raise ValueError(f"not a mapping line: {raw!r}")
+        while stack[-1][0] >= indent:
+            stack.pop()
+        value = value.strip()
+        if not value:
+            child: dict[str, object] = {}
+            stack[-1][1][key] = child
+            stack.append((indent, child))
+        elif value.startswith("[") and value.endswith("]"):
+            stack[-1][1][key] = [item.strip() for item in value[1:-1].split(",")]
+        else:
+            stack[-1][1][key] = value
+    return root
+
+
 class StaticChecks(unittest.TestCase):
     def test_no_run_block_interpolates_an_expression(self) -> None:
         """#51/AC-1: nothing the model wrote reaches a script through ${{ }}, so no run block has one."""
@@ -122,6 +156,28 @@ class StaticChecks(unittest.TestCase):
         for line, script in run_blocks():
             for step in ("argos", "inherit"):
                 self.assertNotIn(f"steps.{step}.outputs", script, f"the run block at line {line} names a step output")
+
+    def test_the_caller_example_in_the_header_parses_as_yaml(self) -> None:
+        """#50: the copy-paste pull_request_target caller is YAML again, with no pointer glued to its lines."""
+        sample = caller_example()
+        self.assertTrue(sample, "the caller example was not found in the header")
+        for line in sample:
+            self.assertFalse(line.endswith("(#50)"), f"the sample line carries a pointer suffix: {line!r}")
+        self.assertEqual(
+            parse_yaml_subset(sample),
+            {
+                "on": {
+                    "pull_request_target": {"types": ["opened", "synchronize", "reopened", "ready_for_review"]}
+                },
+                "jobs": {
+                    "argos": {
+                        "uses": "barte-ai-services/.github/.github/workflows/argos.yml@main",
+                        "secrets": {"claude-token": "..."},
+                        "with": {"environment": "argos"},
+                    }
+                },
+            },
+        )
 
     def test_the_container_reads_managed_settings_read_only(self) -> None:
         """#50: the head cannot switch its own hooks and MCP servers back on."""
