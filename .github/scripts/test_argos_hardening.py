@@ -43,8 +43,8 @@ HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
 TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
 # #50: the Erodos holds Edit and Write, and the deny rules keep it from creating Claude Code configuration.
 # #50: /repo/.git is denied too: git runs there later (reset, clean, status) with every token in env, and a filter
-# or core.fsmonitor written into .git/config would run. Nested config is denied at any depth, and so is a nested
-# .git, a directory or a gitfile: `git add --all` records it as a gitlink and the next `git status` runs its config.
+# #50: or core.fsmonitor written into .git/config would run. Nested config is denied at any depth, and so is a
+# #50: nested .git, a directory or a gitfile: `git add --all` records it as a gitlink and `git status` runs its config.
 CONFIG_PATHS = [
     "//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md",
     "//repo/**/.claude/**", "//repo/**/CLAUDE.local.md", "//repo/.git/**",
@@ -578,6 +578,27 @@ class ModelOutputIsValidated(unittest.TestCase):
                 self.assertIn("<!-- ahrena-review -->", json.loads(posted)["comment"])
                 self.assertNotIn(secret, done.stdout + done.stderr, "the check never echoes the value")
 
+    def test_a_token_written_with_json_escapes_in_the_review_is_not_posted(self) -> None:
+        """#50: the comment is posted decoded, so a token spelled with \\uXXXX or \\/ escapes is held too."""
+        for name in TOKENS:
+            with self.subTest(token=name):
+                secret = f"secret-{name.lower()}/0123456789"
+                escaped = "".join(f"\\u{ord(char):04x}" for char in secret)
+                slashed = secret.replace("/", "\\/")
+                for spelling in (escaped, slashed):
+                    raw = '{"verdict": "approve", "findings": [], "comment": "see ' + spelling + ' here"}'
+                    self.assertNotIn(secret, raw, "the raw text does not hold the token as written")
+                    self.assertEqual(json.loads(raw)["comment"], f"see {secret} here")
+                    done, lines = self.ws.run(review=raw, **{name: secret})
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    out = outputs(lines)
+                    self.assertEqual((out["verdict"], out["blocking"], out["fixed"]), ("comment", "unknown", "false"))
+                    self.assertTrue(out["decision"].startswith("hold_for_human"))
+                    posted = (self.ws.temp / "review.json").read_text()
+                    self.assertNotIn(secret, json.loads(posted)["comment"])
+                    self.assertIn("<!-- ahrena-review -->", json.loads(posted)["comment"])
+                    self.assertNotIn(secret, done.stdout + done.stderr, "the check never echoes the value")
+
     def test_a_review_without_a_token_is_posted_as_it_is(self) -> None:
         """#50: the same tokens are set and none of them is in the review."""
         env = {name: f"secret-{name.lower()}-0123456789" for name in TOKENS}
@@ -771,8 +792,8 @@ class NestedGitlink(unittest.TestCase):
         env = self.step_env()
         self.assertEqual(env.get("GIT_CONFIG_KEY_1"), "diff.ignoreSubmodules")
         # #50: the first `git add --all`, which recorded the gitlink in setUp, did not run it either. A second one
-        # does, with the setting too (probed on git 2.55): the setting is defence in depth, the deny on a nested
-        # .git is what keeps the model from writing one.
+        # #50: does, with the setting too (probed on git 2.55): the setting is defence in depth, the deny on a nested
+        # #50: .git is what keeps the model from writing one.
         self.assertFalse(self.marker.exists(), "recording the gitlink ran the nested fsmonitor")
         for args in (("status", "--porcelain"), ("status",), ("diff", "--stat")):
             self.git(*args, env=env)
