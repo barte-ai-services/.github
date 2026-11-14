@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -42,11 +43,19 @@ HEAD_CONFIG = [".claude", ".mcp.json", "CLAUDE.local.md"]
 TOKENS = ["CLAUDE_KEY", "GH_TOKEN", "ARGOS_PUSH_TOKEN", "APP_TOKEN", "CLOUDFLARE_API_TOKEN"]
 # #50: the Erodos holds Edit and Write, and the deny rules keep it from creating Claude Code configuration.
 CONFIG_PATHS = ["//repo/.claude/**", "//repo/.mcp.json", "//repo/CLAUDE.local.md", "//root/**", "//etc/**"]
+# #50: and on the system paths, where /usr/bin/git lives: the root filesystem is read-only, and this is the second line.
+SYSTEM_PATHS = [f"//{name}/**" for name in ("usr", "app", "bin", "sbin", "lib", "opt", "var")]
 DENIED = (
     ["Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch"]
-    + [f"Edit({path})" for path in CONFIG_PATHS]
-    + [f"Write({path})" for path in CONFIG_PATHS]
+    + [f"Edit({path})" for path in CONFIG_PATHS + SYSTEM_PATHS]
+    + [f"Write({path})" for path in CONFIG_PATHS + SYSTEM_PATHS]
 )
+# #50: tracked and untracked Claude Code configuration deeper than the root, which Claude Code can load too.
+NESTED_TRACKED = ["pkg/.claude/commands/x.md", "pkg/CLAUDE.local.md"]
+NESTED_UNTRACKED = ["pkg/sub/CLAUDE.local.md", "pkg/sub/.claude/settings.json"]
+# The public image the behavioural test runs, pinned by digest (busybox, multi-arch index).
+PROBE_IMAGE = "busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
+REAL_DOCKER = shutil.which("docker")
 
 # #50: Keys the head's `.claude/settings.json` could use to run a command or reach a server, and that the
 # managed file closes (#50). Each was confirmed against Claude Code 2.1.296, the one in the pinned image.
@@ -136,8 +145,10 @@ class StaticChecks(unittest.TestCase):
         script = step_script("argos")
         before, after = script.split("docker run", 1)
         self.assertIn("update-index --skip-worktree", before)
-        self.assertIn('ls-files -z -- .claude .mcp.json CLAUDE.local.md', before)
-        self.assertIn('rm -rf "$repo_copy/.claude" "$repo_copy/.mcp.json" "$repo_copy/CLAUDE.local.md"', before)
+        self.assertIn(".claude", before)
+        self.assertIn(".mcp.json", before)
+        self.assertIn("CLAUDE.local.md", before)
+        self.assertRegex(before, r"ls-files -z -- .*\.mcp\.json")
         self.assertNotIn('git -C "$repo_copy"', after, "no git on the copy after the container ran")
         self.assertNotIn("git ", after.split('"$ARGOS_IMAGE"', 1)[1].split("review.log", 1)[0])
 
@@ -165,6 +176,28 @@ class StaticChecks(unittest.TestCase):
         for needle in ("skip-worktree", "CLAUDE.local.md", "settingSources", "allowManagedPermissionRulesOnly"):
             self.assertIn(needle, text)
 
+    def test_the_docker_run_has_a_read_only_root_and_two_tmpfs(self) -> None:
+        """#50: the Erodos holds Edit and Write and /usr/bin/git later runs with every token: the root is read-only."""
+        run = step_script("argos").split("docker run", 1)[1].split('"$ARGOS_IMAGE"', 1)[0]
+        self.assertRegex(run, r"--read-only\b")
+        self.assertRegex(run, r"--tmpfs /tmp\b")
+        self.assertRegex(run, r"--tmpfs /root\b")
+
+    def test_the_header_states_what_the_container_can_write(self) -> None:
+        """#50: the header says what is writable now, and no longer says a nested CLAUDE.local.md is open."""
+        text = header()
+        for needle in ("--read-only", "/tmp", "/root", "tmpfs", "/usr/bin/git"):
+            self.assertIn(needle, text)
+        self.assertNotIn("nested CLAUDE.local.md is not covered", text)
+
+    def test_the_nested_config_is_removed_with_the_same_skip_worktree(self) -> None:
+        """#50: a CLAUDE.local.md and a .claude/ deeper than the root go too, marked skip-worktree first."""
+        before = step_script("argos").split("docker run", 1)[0]
+        self.assertIn("**/CLAUDE.local.md", before)
+        self.assertIn("**/.claude", before)
+        self.assertRegex(before, r"-name CLAUDE\.local\.md")
+        self.assertRegex(before, r"-name \.claude")
+
     def test_the_managed_file_denies_what_the_model_must_not_read_or_run(self) -> None:
         """#50: the reads that reach the job's tokens, and the tools the runtime never grants."""
         heredoc = TEXT[TEXT.index("<<'MANAGED'") : TEXT.index("\n          MANAGED\n")]
@@ -187,12 +220,13 @@ class Workspace:
         (self.workspace / "app.py").write_text("print('hi')\n")
         (self.workspace / "CLAUDE.md").write_text("# project notes\n")
         self.add_symlinks()
-        for name in HEAD_CONFIG_TRACKED:
+        for name in HEAD_CONFIG_TRACKED + NESTED_TRACKED:
             (self.workspace / name).parent.mkdir(parents=True, exist_ok=True)
             (self.workspace / name).write_text("{}\n")
         subprocess.run(["git", "add", "-A"], cwd=self.workspace, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=self.workspace, check=True, capture_output=True)
-        for name in HEAD_CONFIG_UNTRACKED:
+        for name in HEAD_CONFIG_UNTRACKED + NESTED_UNTRACKED:
+            (self.workspace / name).parent.mkdir(parents=True, exist_ok=True)
             (self.workspace / name).write_text("{}\n")
         bin_dir = root / "bin"
         bin_dir.mkdir()
@@ -204,6 +238,7 @@ class Workspace:
             'for a in "$@"; do case "$a" in *:/repo) src="${a%:/repo}"\n'
             '  { ls -A "$src"; git -C "$src" rev-parse HEAD; } > "$DOCKER_ARGS.repo" 2>&1\n'
             '  git -C "$src" status --porcelain > "$DOCKER_ARGS.status" 2>&1\n'
+            '  find "$src" -name .git -prune -o \\( -name .claude -o -name CLAUDE.local.md \\) -print > "$DOCKER_ARGS.nested" 2>&1\n'
             '  find "$src" -name .git -prune -o -type l -print > "$DOCKER_ARGS.links" 2>&1\n'
             '  if [ -n "$FAKE_ERODOS" ]; then\n'
             '    git -C "$src" checkout --quiet --detach "$HEAD"\n'
@@ -389,6 +424,42 @@ class ContainerSetup(unittest.TestCase):
         self.assertEqual(Path(f"{self.ws.args_file}.status").read_text(), "")
         self.assertEqual(Path(f"{self.ws.args_file}.links").read_text(), "")
 
+    def test_no_nested_claude_config_is_mounted(self) -> None:
+        """#50: Claude Code loads a CLAUDE.local.md and a .claude/ from subdirectories too: none reaches the
+        container, tracked or not, and the Erodos does not commit the removal."""
+        done, _ = self.ws.run(FAKE_ERODOS="1")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(Path(f"{self.ws.args_file}.nested").read_text(), "")
+        self.assertEqual(Path(f"{self.ws.args_file}.status").read_text(), "")
+        self.assertEqual(Path(f"{self.ws.args_file}.commit").read_text().split(), ["M", "app.py"])
+        for name in NESTED_TRACKED + NESTED_UNTRACKED:
+            self.assertTrue((self.ws.workspace / name).exists(), f"{name} stays in the runner's workspace")
+
+    def flags(self) -> list[str]:
+        """The docker flags the step passed, up to the image."""
+        args = self.ws.docker_args()
+        return args[: args.index("image@sha256:0")]
+
+    def test_the_root_is_read_only_with_two_tmpfs(self) -> None:
+        """#50: --read-only, and a tmpfs on /tmp and on /root, which the runtime writes."""
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        flags = self.flags()
+        self.assertIn("--read-only", flags)
+        tmpfs = [flags[i + 1] for i, a in enumerate(flags) if a == "--tmpfs"]
+        self.assertEqual(sorted(t.split(":")[0] for t in tmpfs), ["/root", "/tmp"])
+
+    def test_repo_is_the_only_writable_bind(self) -> None:
+        """#50: every other bind ends in :ro, and /repo (the copy) is the one that does not."""
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        writable = [m for m in self.mounts() if not m.endswith(":ro")]
+        self.assertEqual(len(writable), 1, writable)
+        self.assertTrue(writable[0].endswith(":/repo"))
+        for m in self.mounts():
+            if not m.endswith(":/repo"):
+                self.assertTrue(m.endswith(":ro"), m)
+
     def test_the_review_output_is_outside_the_copy(self) -> None:
         """#50: the later steps read RUNNER_TEMP/review.json, and the container writes it only on stdout."""
         done, _ = self.ws.run(review='{"verdict":"approve"}')
@@ -560,3 +631,66 @@ class InheritedCommentIsValidated(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(REAL_DOCKER, "docker is not installed: the behaviour of the flags needs a container")
+class ReadOnlyContainer(unittest.TestCase):
+    """#50: a container started with the flags of the step cannot write /usr/bin/git, and still writes /repo, /tmp
+    and /root. Public image, no credentials."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        assert REAL_DOCKER
+        info = subprocess.run([REAL_DOCKER, "info"], capture_output=True, text=True)
+        if info.returncode != 0:
+            raise unittest.SkipTest("docker is installed but its daemon does not answer: no container can start")
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ws = Workspace(Path(self.tmp.name))
+        done, _ = self.ws.run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        args = self.ws.docker_args()
+        flags = args[: args.index("image@sha256:0")]
+        # The flags that shape the filesystem, as the step wrote them; the binds are the test's own.
+        self.fs_flags: list[str] = []
+        for i, a in enumerate(flags):
+            if a == "--read-only":
+                self.fs_flags.append(a)
+            elif a == "--tmpfs":
+                self.fs_flags += [a, flags[i + 1]]
+        self.repo = Path(self.tmp.name) / "repo"
+        self.repo.mkdir()
+        self.repo.chmod(0o777)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def sh(self, script: str) -> subprocess.CompletedProcess[str]:
+        assert REAL_DOCKER
+        return subprocess.run(
+            [REAL_DOCKER, "run", "--rm", *self.fs_flags, "-v", f"{self.repo}:/repo", "-w", "/repo", "--entrypoint", "sh",
+             PROBE_IMAGE, "-c", script],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_the_flags_were_found(self) -> None:
+        self.assertIn("--read-only", self.fs_flags)
+        self.assertEqual(self.fs_flags.count("--tmpfs"), 2)
+
+    def test_a_write_under_usr_fails(self) -> None:
+        """#50: the Erodos cannot replace /usr/bin/git, nor anything under /usr."""
+        for target in ("/usr/bin/git", "/usr/bin/new-binary", "/bin/sh", "/etc/x"):
+            done = self.sh(f"echo x > {target}")
+            self.assertNotEqual(done.returncode, 0, f"{target} was written")
+            self.assertIn("read-only", done.stderr.lower())
+
+    def test_a_write_under_repo_tmp_and_root_succeeds(self) -> None:
+        """#50: the copy, the scratch space and the home stay writable."""
+        # Read back inside the container: a daemon in a VM (colima) does not share the host's temp directory.
+        done = self.sh(
+            "for f in /repo/f /tmp/f /root/f; do echo x > $f && test -s $f || exit 1; done && echo ok"
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.strip(), "ok")

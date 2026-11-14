@@ -123,9 +123,16 @@ name: argos
 #     included, reached the model's request. With the deny, Read, Grep and the memory load were refused, so the
 #     removal is defence in depth, not the only closure. A fresh checkout has no untracked symlink, so the
 #     tracked ones are all there are;
+#   - Claude Code also loads a CLAUDE.local.md and a .claude/ from a subdirectory, so the same removal, with the
+#     same skip-worktree, takes them at any depth;
 #   - the Erodos holds Edit and Write, so the managed file also denies them on /repo/.claude, /repo/.mcp.json,
-#     /repo/CLAUDE.local.md, /root and /etc: it cannot create Claude Code configuration for the run. A nested
-#     CLAUDE.local.md is not covered by these paths.
+#     /repo/CLAUDE.local.md, /root and /etc: it cannot create Claude Code configuration for the run;
+#   - what the container can write (#50): the root filesystem is read-only (docker run --read-only), so the
+#     Erodos cannot overwrite /usr/bin/git, which later runs with every token the container holds, or anything
+#     else of the image. Writable are only /repo (the copy, the one read-write bind) and /tmp and /root, both
+#     tmpfs that go away with the container; the event file and the managed file are mounted read-only. The
+#     managed file also denies Edit and Write on /usr, /app, /bin, /sbin, /lib, /opt and /var, as defence in
+#     depth behind the read-only root.
 # Out on purpose: allowManagedPermissionRulesOnly, which would drop the Edit and Write grants the Erodos runs
 # with. The trade-off: the model no longer reads the head's own `.claude/` files, so a PR that changes them is
 # reviewed from the diff alone. CLAUDE.md stays in the copy, and Claude Code loads a regular one as
@@ -414,8 +421,12 @@ jobs:
                 "Read(//proc/**)", "Read(//sys/**)", "Read(//etc/claude-code/**)", "Bash", "WebFetch", "WebSearch",
                 "Edit(//repo/.claude/**)", "Edit(//repo/.mcp.json)", "Edit(//repo/CLAUDE.local.md)",
                 "Edit(//root/**)", "Edit(//etc/**)",
+                "Edit(//usr/**)", "Edit(//app/**)", "Edit(//bin/**)", "Edit(//sbin/**)", "Edit(//lib/**)",
+                "Edit(//opt/**)", "Edit(//var/**)",
                 "Write(//repo/.claude/**)", "Write(//repo/.mcp.json)", "Write(//repo/CLAUDE.local.md)",
-                "Write(//root/**)", "Write(//etc/**)"
+                "Write(//root/**)", "Write(//etc/**)",
+                "Write(//usr/**)", "Write(//app/**)", "Write(//bin/**)", "Write(//sbin/**)", "Write(//lib/**)",
+                "Write(//opt/**)", "Write(//var/**)"
               ],
               "disableBypassPermissionsMode": "disable"
             },
@@ -430,9 +441,13 @@ jobs:
           # git the host runs on the copy, and it runs before the container: after it, none.
           repo_copy="$(mktemp -d "$RUNNER_TEMP/argos-repo.XXXXXX")"
           cp -a "$PWD/." "$repo_copy/"
-          git -C "$repo_copy" ls-files -z -- .claude .mcp.json CLAUDE.local.md \
+          # Claude Code also loads a CLAUDE.local.md and a .claude/ from a subdirectory, so those go at any depth
+          # (the `.mcp.json` is read from the root only). The tracked ones by pathspec, the rest by find, which
+          # does not follow a symlink.
+          git -C "$repo_copy" ls-files -z -- ':(glob)**/.claude' ':(glob)**/.claude/**' ':(glob)**/CLAUDE.local.md' .mcp.json \
             | xargs -0 -r git -C "$repo_copy" update-index --skip-worktree --
-          rm -rf "$repo_copy/.claude" "$repo_copy/.mcp.json" "$repo_copy/CLAUDE.local.md"
+          rm -rf "$repo_copy/.mcp.json"
+          find "$repo_copy" -name .git -prune -o \( -name .claude -o -name CLAUDE.local.md \) -prune -exec rm -rf {} +
           # #50: the same for every tracked symlink (mode 120000, any depth): cp -a keeps them, and one that
           # points into /proc is read as a file or loaded as CLAUDE.md. Unlinked with rm, never followed.
           links="$(mktemp "$RUNNER_TEMP/argos-links.XXXXXX")"
@@ -448,7 +463,11 @@ jobs:
           # The event goes in read-only: the runtime reads from it whether the head is of this repository and
           # its branch, which is where the Erodos pushes. The Erodos pushes from the copy: it names the remote
           # by URL and sends the credential in the git environment, so it needs nothing from the copy's config.
-          docker run --rm \
+          # The root filesystem is read-only (#50): the Erodos holds Edit and Write, and an overwritten
+          # /usr/bin/git would later run with every token the container holds. Writable are /repo (the copy,
+          # the only read-write bind), and /tmp and /root as tmpfs, which the runtime uses and which go away
+          # with the container.
+          docker run --rm --read-only --tmpfs /tmp --tmpfs /root \
             -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e ARGOS_MODEL -e GH_TOKEN \
             -e CLOUDFLARE_ACCOUNT_ID -e CLOUDFLARE_API_TOKEN \
             -e ARGOS_FIX -e ARGOS_MAX_ROUNDS -e ARGOS_PUSH_TOKEN \
