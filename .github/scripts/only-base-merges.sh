@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Exits 0 when <head> adds nothing to <approved> but clean merges of <base>, #56: the head that
-# auto-merge.yml's update-branch writes on top of a reviewed commit. Same check as argos.yml's
-# inherited opinion (#39): from the head down the first parents to the approved commit, each commit
-# is a merge whose second parent is in the base and whose tree is the one `git merge-tree` writes,
-# and the diff against the base keeps its patch-id. Any doubt exits 1.
+# Exits 0 when <head> adds only clean merges of <base> to <approved>, #56. Same rule as argos.yml, #39.
 # Usage: only-base-merges.sh <git-dir> <approved sha, 7+ hex> <head sha> <base sha>
 set -euo pipefail
 export GIT_DIR="$1"

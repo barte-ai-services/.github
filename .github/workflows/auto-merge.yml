@@ -65,6 +65,7 @@ jobs:
           # O fetch de um repo, para ver se o head só mescla a base sobre o commit aprovado, autentica
           # pelo ambiente, sem o token na linha de comando.
           basic="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$basic"
           export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
           export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic"
           repos="$(gh repo list "$OWNER" --limit 500 --no-archived --json name --jq '.[].name')"
@@ -104,8 +105,10 @@ jobs:
                 read -r _ approved why <<<"$decision"
                 gitdir="$RUNNER_TEMP/$repo.git"
                 if [ ! -d "$gitdir" ]; then git init -q --bare "$gitdir"; fi
-                if base="$(gh api "repos/$OWNER/$repo/commits/$base_ref" --jq '.sha')" \
-                  && git --git-dir="$gitdir" fetch -q --no-tags "https://github.com/$OWNER/$repo" "$head" "$base" 2>/dev/null \
+                # Só um head que é merge busca o repo, e o fetch tem prazo.
+                if [ "$(gh api "repos/$OWNER/$repo/commits/$head" --jq '.parents | length' 2>/dev/null)" = 2 ] \
+                  && base="$(gh api "repos/$OWNER/$repo/commits/$base_ref" --jq '.sha')" \
+                  && timeout 120 git --git-dir="$gitdir" fetch -q --no-tags "https://github.com/$OWNER/$repo" "$head" "$base" 2>/dev/null \
                   && bash "$scripts/only-base-merges.sh" "$gitdir" "$approved" "$head" "$base" 2>/dev/null; then
                   decision="approve ${approved:0:7}, e o head ${head:0:7} só mescla a base"
                 else
