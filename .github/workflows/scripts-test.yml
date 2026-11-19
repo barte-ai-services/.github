@@ -1,0 +1,23 @@
+name: scripts-test
+
+# Os testes dos scripts do auto-merge.yml, #56: o veredito do Argos e o head que só mescla a base.
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/auto-merge.yml"
+      - ".github/workflows/scripts-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  argos-verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - run: bash .github/scripts/test-argos-verdict.sh
+      - run: bash .github/scripts/test-only-base-merges.sh
