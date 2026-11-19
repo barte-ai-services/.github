@@ -7,7 +7,9 @@
 #   writers   logins with write access or more to the repository
 #   labels    the PR's label names
 #   comments  the PR's issue comments, as the REST API returns them
-# Output: one line, "approve <why>" or "wait <why>".
+# Output: one line, "approve <why>", "wait <why>" or "stale <sha> <why>". stale means the most
+# recent verdict is an approve of an earlier commit: the caller enables or keeps auto-merge only if
+# the head adds nothing but merges of the base on top of <sha> (only-base-merges.sh).
 #
 # An Argos verdict is read from two formats:
 #   - a session's comment, by a writer: first line `<!-- ahrena-review:<pr>:<sha> verdict=<v> -->`,
@@ -43,7 +45,10 @@ def ci_verdict($app):
     | [$all[] | select(.sha as $s | $in.head | startswith($s))] | sort_by(.at) as $onhead
     | if ($onhead | length) == 0 then
         if ($all | length) == 0 then "wait sem veredito do Argos"
-        else "wait sem veredito do Argos no head \($short) (o último é de \($all | sort_by(.at) | last | .sha[0:7]))"
+        else ($all | sort_by(.at) | last) as $l
+          | if $l.verdict == "approve" and $l.blocking == 0 then "stale \($l.sha) approve de \($l.sha[0:7]), não do head \($short)"
+            else "wait sem veredito do Argos no head \($short) (o último é \($l.verdict) em \($l.sha[0:7]))"
+            end
         end
       else ($onhead | last) as $v
         | if $v.verdict == "approve" and $v.blocking == 0 then "approve \($v.source) no head \($short)"

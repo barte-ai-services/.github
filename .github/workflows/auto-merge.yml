@@ -1,25 +1,23 @@
 name: auto-merge
 
-# Liga o auto-merge em todo PR aberto da org, para que um PR com o CI verde entre na main sem ninguém
-# clicar (barte-ai-services/infra#183). Quem decide o que segura o merge é o ruleset de cada repo, que
-# exige só os checks de CI; este workflow só garante que o auto-merge esteja ligado.
+# Liga o auto-merge nos PRs abertos da org que o Argos aprovou, para que um PR aprovado e com o CI verde
+# entre na main sem ninguém clicar (barte-ai-services/infra#183). O ruleset de cada repo exige só os
+# checks de CI; o approve do Argos sobre o head é este workflow que exige (#56).
 #
 # - Passa por todo repositório não arquivado com allow_auto_merge ligado. O template
 #   (barte-ai-platform) tem a setting desligada de propósito, pela tabela .github/platform-repos.json
 #   do infra: nele o merge é um clique do Fernando, e este workflow não toca.
-# - Pula PR em draft, PR que já tem auto-merge e PR com o label argos:hold.
+# - Pula PR em draft, PR de fork e PR com o label argos:hold.
 # - Só liga o auto-merge num PR com um veredito approve do Argos sobre o head atual (#56): o comentário
 #   do Argos das sessões (`<!-- ahrena-review:<pr>:<sha> verdict=approve -->`, de quem escreve no repo)
 #   ou o do Argos de CI (`<!-- ahrena-review -->`, do app, com 0 bloqueantes). Entre os vereditos sobre
-#   o head, o mais recente decide; um commit novo depois do approve o invalida. Sem veredito, com outro
-#   veredito ou na dúvida, o PR espera: a regra está em .github/scripts/argos-verdict.jq, com os testes
-#   ao lado. O auto-merge sai com --match-head-commit, então um push entre a leitura e o merge não entra.
+#   o head, o mais recente decide. Um commit novo depois do approve o invalida; a única exceção é o head
+#   que só mescla a base sobre o commit aprovado (o mesmo critério do argos.yml, #39). Sem veredito, com
+#   outro veredito ou na dúvida, o PR espera. A regra está em .github/scripts, com os testes ao lado.
+# - Liga com --match-head-commit, e relê os PRs que já têm auto-merge: um push de quem escreve no repo
+#   não desliga o auto-merge no GitHub, então um PR que perdeu o approve tem o auto-merge desligado.
 # - Um PR atrás da main (BEHIND), num repo que exige a branch atualizada, tem a branch atualizada depois
-#   de o auto-merge estar ligado, para o CI rodar de novo e o auto-merge seguir. PR sem auto-merge e sem
-#   approve não é atualizado: a revisão é do head que o autor deixou.
-# - The update merges the base, never rebases: the reviewed commit stays in the branch, and the Argos
-#   reusable inherits its opinion when the PR's diff against the base is the same (#39), so the update
-#   re-adds no argos:hold.
+#   de o auto-merge estar ligado. O update mescla a base, nunca faz rebase: o head novo herda o approve.
 # - PR empilhado (stack) não aceita auto-merge no GitHub: é relatado e seguido adiante.
 #
 # Roda com o token do app de release (herald-barte), instalado em todos os repos, para o merge disparar
@@ -62,27 +60,33 @@ jobs:
           ARGOS_APP: argos-by-ahrena[bot]
         run: |
           set -uo pipefail
-          verdict_jq="$GITHUB_WORKSPACE/.github/scripts/argos-verdict.jq"
-          enabled=0 updated=0 skipped=0 waiting=0
+          scripts="$GITHUB_WORKSPACE/.github/scripts"
+          enabled=0 disabled=0 updated=0 skipped=0 waiting=0
+          # O fetch de um repo, para ver se o head só mescla a base sobre o commit aprovado, autentica
+          # pelo ambiente, sem o token na linha de comando.
+          basic="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic"
           repos="$(gh repo list "$OWNER" --limit 500 --no-archived --json name --jq '.[].name')"
           for repo in $repos; do
             settings="$(gh api "repos/$OWNER/$repo")" || continue
             [ "$(jq -r '.allow_auto_merge' <<<"$settings")" = "true" ] || continue
             method="$(jq -r 'if .allow_merge_commit then "--merge" elif .allow_squash_merge then "--squash" else "--rebase" end' <<<"$settings")"
+            # PR de fork fica de fora: o sha curto do marcador das sessões não basta contra um commit
+            # forjado com o mesmo prefixo.
             prs="$(gh pr list -R "$OWNER/$repo" --state open --limit 200 \
-              --json number,isDraft,autoMergeRequest,mergeStateStatus,labels,headRefOid \
-              --jq '.[] | select(.isDraft | not) | select([.labels[].name] | index("argos:hold") | not)
-                | "\(.number)\t\(.autoMergeRequest != null)\t\(.mergeStateStatus)\t\(.headRefOid)"')" || continue
+              --json number,isDraft,isCrossRepository,autoMergeRequest,mergeStateStatus,labels,headRefOid,baseRefName \
+              --jq '.[] | select(.isDraft | not) | select(.isCrossRepository | not)
+                | select([.labels[].name] | index("argos:hold") | not)
+                | "\(.number)\t\(.autoMergeRequest != null)\t\(.mergeStateStatus)\t\(.headRefOid)\t\(.baseRefName)"')" || continue
             unset writer; declare -A writer=()
-            while IFS=$'\t' read -r n auto state head; do
+            while IFS=$'\t' read -r n auto state head base_ref; do
               [ -n "$n" ] || continue
-              if [ "$auto" != "true" ]; then
-                # O veredito do Argos sobre o head atual decide (#56). Uma leitura que falha é espera.
-                if ! input="$(gh api --paginate --slurp "repos/$OWNER/$repo/issues/$n/comments" \
-                    | jq -c --argjson pr "$n" --arg head "$head" --arg app "$ARGOS_APP" \
-                      '{pr: $pr, head: $head, app: $app, writers: [], labels: [], comments: (add // [])}')"; then
-                  waiting=$((waiting + 1)); echo "$repo#$n: espera — não li os comentários"; continue
-                fi
+              # O veredito do Argos sobre o head atual decide (#56), também num PR que já tem auto-merge:
+              # um push de quem escreve no repo não desliga o auto-merge. Uma leitura que falha é espera.
+              if input="$(gh api --paginate --slurp "repos/$OWNER/$repo/issues/$n/comments" \
+                  | jq -c --argjson pr "$n" --arg head "$head" --arg app "$ARGOS_APP" \
+                    '{pr: $pr, head: $head, app: $app, writers: [], labels: [], comments: (add // [])}')"; then
                 for login in $(jq -r '[.comments[].user.login] | unique | .[]' <<<"$input"); do
                   if [ -z "${writer[$login]+x}" ]; then
                     perm="$(gh api "repos/$OWNER/$repo/collaborators/$login/permission" --jq '.permission' 2>/dev/null)" || perm=""
@@ -90,12 +94,38 @@ jobs:
                   fi
                   [ "${writer[$login]}" = 1 ] && input="$(jq -c --arg l "$login" '.writers += [$l]' <<<"$input")"
                 done
-                decision="$(jq -r -f "$verdict_jq" <<<"$input")" || decision="wait o filtro falhou"
-                if [ "${decision%% *}" != approve ]; then
-                  waiting=$((waiting + 1)); echo "$repo#$n: espera — ${decision#* }"; continue
+                decision="$(jq -r -f "$scripts/argos-verdict.jq" <<<"$input")" || decision="wait o filtro falhou"
+              else
+                decision="wait não li os comentários"
+              fi
+              # Um approve de um commit anterior vale quando o head só mescla a base sobre ele: é o head
+              # que o update-branch abaixo escreve.
+              if [ "${decision%% *}" = stale ]; then
+                read -r _ approved why <<<"$decision"
+                gitdir="$RUNNER_TEMP/$repo.git"
+                if [ ! -d "$gitdir" ]; then git init -q --bare "$gitdir"; fi
+                if base="$(gh api "repos/$OWNER/$repo/commits/$base_ref" --jq '.sha')" \
+                  && git --git-dir="$gitdir" fetch -q --no-tags "https://github.com/$OWNER/$repo" "$head" "$base" 2>/dev/null \
+                  && bash "$scripts/only-base-merges.sh" "$gitdir" "$approved" "$head" "$base" 2>/dev/null; then
+                  decision="approve ${approved:0:7}, e o head ${head:0:7} só mescla a base"
+                else
+                  decision="wait $why"
                 fi
+              fi
+              if [ "${decision%% *}" != approve ]; then
+                waiting=$((waiting + 1)); echo "$repo#$n: espera — ${decision#* }"
+                if [ "$auto" = true ]; then
+                  if gh pr merge "$n" -R "$OWNER/$repo" --disable-auto >/dev/null 2>&1; then
+                    disabled=$((disabled + 1)); echo "$repo#$n: auto-merge desligado"
+                  else
+                    echo "::warning::$repo#$n: o auto-merge está ligado sem approve e não desligou"
+                  fi
+                fi
+                continue
+              fi
+              if [ "$auto" != true ]; then
                 if out="$(gh pr merge "$n" -R "$OWNER/$repo" --auto "$method" --match-head-commit "$head" 2>&1)"; then
-                  enabled=$((enabled + 1)); auto=true; echo "$repo#$n: auto-merge ligado — ${decision#* }"
+                  enabled=$((enabled + 1)); echo "$repo#$n: auto-merge ligado — ${decision#* }"
                 else
                   skipped=$((skipped + 1)); echo "$repo#$n: não ligou — $(head -1 <<<"$out")"; continue
                 fi
@@ -105,4 +135,4 @@ jobs:
               fi
             done <<<"$prs"
           done
-          echo "auto-merge ligado em $enabled PR(s); $waiting esperando o approve do Argos no head; $updated branch(es) atualizada(s); $skipped não aceitaram." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "auto-merge ligado em $enabled PR(s) e desligado em $disabled; $waiting esperando o approve do Argos no head; $updated branch(es) atualizada(s); $skipped não aceitaram." | tee -a "$GITHUB_STEP_SUMMARY"
