@@ -1,0 +1,23 @@
+name: scripts-test
+
+# Os testes dos scripts que os workflows da org usam (barte-ai-services/.github#56): hoje, a regra do
+# auto-merge.yml que lê o veredito do Argos.
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/auto-merge.yml"
+      - ".github/workflows/scripts-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  argos-verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - run: bash .github/scripts/test-argos-verdict.sh
