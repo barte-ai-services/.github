@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exits 0 when <head> adds only clean merges of <base> to <approved>, #56. Same rule as argos.yml, #39.
-# Usage: only-base-merges.sh <git-dir> <approved sha, 7+ hex> <head sha> <base sha>
+# Usage: only-base-merges.sh <git-dir> <approved sha, 7+ hex> <head sha> <base sha>, #56
 set -euo pipefail
 export GIT_DIR="$1"
 approved="$(git rev-parse --verify --quiet "$2^{commit}")" || exit 1
